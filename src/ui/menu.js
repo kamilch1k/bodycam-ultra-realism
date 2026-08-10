@@ -1,4 +1,14 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
+import { OPTIC_ORDER } from '../weapons/optics.js';
+
+/** Short enough to fit a segmented control; the full names live in optics.js. */
+const OPTIC_LABELS = {
+  irons: 'irons',
+  reddot: 'dot',
+  okp7: 'okp-7',
+  acog: '4x',
+  vari: '1-6x',
+};
 
 const PRESETS = ['low', 'medium', 'high', 'ultra'];
 
@@ -53,6 +63,29 @@ export class PauseMenu {
       b.addEventListener('click', () => this.setQuality(p));
       this.qBtns.push(b);
     }
+
+    // ---- optic ------------------------------------------------------------
+    /**
+     * In-match gunsmith, such as it is. Nothing is rebuilt when you pick a
+     * sight — every optic was built at load and this flips which one is visible
+     * (see weapons/optics.js), so it is safe to change mid-firefight.
+     *
+     * Fitted to the weapon in your hands, not to a loadout slot: swap to the
+     * SMG and this row follows it.
+     */
+    this.opticRow = this._row('Optic');
+    this.opticSeg = el('div', 'ow-seg', this.opticRow);
+    this.opticBtns = [];
+    for (const id of OPTIC_ORDER) {
+      const b = el('button', null, this.opticSeg, OPTIC_LABELS[id]);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        this.ctx.peek('weapons')?.setOptic?.(id);
+        this.syncFromConfig();
+      });
+      this.opticBtns.push([b, id]);
+    }
+    this.opticNote = el('div', 'val', this.opticRow, '');
 
     // ---- advanced graphics ------------------------------------------------
     /**
@@ -236,6 +269,21 @@ export class PauseMenu {
     for (let i = 0; i < this.qBtns.length; i++)
       this.qBtns[i].classList.toggle('on', PRESETS[i] === cfg.quality);
     for (const [b, v] of this.invBtns) b.classList.toggle('on', !!cfg.invertY === v);
+    const wp = this.ctx.peek('weapons');
+    const fitted = wp?.opticId ?? null;
+    for (const [b, id] of this.opticBtns ?? []) {
+      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.optics?.[id];
+      b.classList.toggle('on', fitted === id);
+      b.disabled = !has;
+      setStyle(b, 'opacity', has ? '' : '0.35');
+    }
+    if (this.opticNote) {
+      const range = wp?.opticMagRange;
+      setText(
+        this.opticNote,
+        range ? `${wp.adsMagnification.toFixed(1)}x · wheel` : ''
+      );
+    }
     for (const f of this.featBtns ?? []) {
       const st = this._featureState(f.key);
       for (const [b, v] of f.pair) {

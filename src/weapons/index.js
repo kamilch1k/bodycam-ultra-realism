@@ -67,6 +67,8 @@ export class WeaponSystem {
     this.sim = null;
     this.states = new Map();
     this.activeId = 'rifle';
+    /** Current power of a variable optic; fixed sights ignore it. */
+    this._opticZoom = 1;
     this.debugMode = null;
 
     this._fireTimer = 0;
@@ -318,6 +320,63 @@ export class WeaponSystem {
     const ids = this.weaponIds;
     const i = ids.indexOf(this.activeId);
     return this.setWeapon(ids[(i + 1) % ids.length]);
+  }
+
+  /* ---- optics ----------------------------------------------------------- */
+
+  /**
+   * MAGNIFICATION, WITHOUT PICTURE-IN-PICTURE.
+   *
+   * There is no scope camera and no second render target. The world camera's
+   * ADS field of view is divided by this number while the VIEWMODEL camera is
+   * left alone, which is exactly what a telescopic sight does: the tube in your
+   * hands does not change apparent size, the scene inside it does. A PiP pass
+   * would cost a whole extra scene render to arrive at the same picture.
+   *
+   * 1 while hipfiring — the magnification only exists behind the glass.
+   */
+  get adsMagnification() {
+    // Read by player/camera, which can tick before weapons has finished init.
+    const spec = this.viewmodel?.opticSpec(this.activeId);
+    if (!spec) return 1;
+    return spec.magRange ? this._opticZoom : spec.mag;
+  }
+
+  /** `[min, max]` if the fitted optic is variable-power, else null. */
+  get opticMagRange() {
+    return this.viewmodel?.opticSpec(this.activeId)?.magRange ?? null;
+  }
+
+  get opticId() {
+    return this.viewmodel?.weapons.get(this.activeId)?.opticId ?? null;
+  }
+
+  /**
+   * Fit a sight to the ACTIVE weapon. Costs a visibility flip — see
+   * `Viewmodel.setOptic` for why nothing is rebuilt.
+   */
+  setOptic(opticId) {
+    if (!this.viewmodel.setOptic(this.activeId, opticId)) return false;
+    const range = this.opticMagRange;
+    // Every optic comes up at its lowest power, so switching to a 1-6x never
+    // drops you into a 6x sight picture at three metres.
+    this._opticZoom = range ? range[0] : 1;
+    this.ctx.events.emit('weapon:optic', { weapon: this.activeId, optic: opticId });
+    return true;
+  }
+
+  /**
+   * Step a variable optic's power. One wheel notch is a third of a stop, so the
+   * full 1-6x range takes about five notches in either direction — fast enough
+   * to react with, slow enough that a stray scroll does not lose your target.
+   */
+  zoomOptic(notches) {
+    const range = this.opticMagRange;
+    if (!range) return this._opticZoom;
+    const step = Math.sign(notches);
+    const next = this._opticZoom * Math.pow(1.38, step);
+    this._opticZoom = Math.min(range[1], Math.max(range[0], next));
+    return this._opticZoom;
   }
 
   cycleFireMode() {
@@ -636,7 +695,19 @@ export class WeaponSystem {
       if (input.pressed('Digit2')) this.setWeapon('smg');
       if (input.pressed('Digit3')) this.setWeapon('pistol');
       if (input.pressed('Tab')) this.nextWeapon();
-      if (input.wheel) this.nextWeapon();
+      /**
+       * The wheel does two jobs and the sights decide which.
+       *
+       * Aimed through a variable-power optic it changes MAGNIFICATION, which is
+       * the only control a 1-6x has; anywhere else it stays the weapon swap it
+       * has always been. Gating on `magRange` rather than on ADS alone means a
+       * fixed 4x still swaps weapons while aimed, which is what you want when
+       * something is close.
+       */
+      if (input.wheel) {
+        if (this._state.ads && this.opticMagRange) this.zoomOptic(input.wheel);
+        else this.nextWeapon();
+      }
       this._runTrigger(dt, input.fire, input.firePressed, def, s);
       st.trigger = input.fire && this.canFire();
       // Auto-reload on a dry trigger pull, like every modern shooter.

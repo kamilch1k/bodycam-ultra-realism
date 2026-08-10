@@ -231,7 +231,20 @@ export class PlayerSystem {
     }
     const input = this.ctx.input;
     const cfg = this.ctx.config;
-    const sens = lerp(1, cfg.adsSensScale, clamp01(this.adsAmount));
+    /**
+     * Sensitivity follows the magnification, not just the ADS blend.
+     *
+     * Without this a 4x optic turns four times as fast across the target as the
+     * same mouse movement does unaimed, which is unusable — it is the reason
+     * every shooter ships "zoom-relative" sensitivity. Dividing by the square
+     * root of the magnification rather than by the magnification itself is the
+     * usual compromise: strictly zoom-relative feels sluggish at high power
+     * because the player still has to traverse the same screen.
+     */
+    const mag = this.ctx.peek('weapons')?.adsMagnification ?? 1;
+    const sens =
+      lerp(1, cfg.adsSensScale, clamp01(this.adsAmount)) /
+      lerp(1, Math.sqrt(mag), clamp01(this.adsAmount));
 
     let dYaw = -input.look.x * sens;
     let dPitch = -input.look.y * sens;

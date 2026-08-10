@@ -1,4 +1,5 @@
 import { Assembly, box, blob, dome, extrude, roundRect, latheZ, rodZ, mergeAll } from '../geometry.js';
+import { buildOpticSet } from '../optics.js';
 import {
   addBarrel,
   addGasBlock,
@@ -248,16 +249,16 @@ export function buildRifle() {
    * frame was a quarter-height ring of dark tube wall — "a length of drainpipe",
    * measured. 52 mm plus the flared bore in buildOptic gets it to 69%.
    */
-  const optic = buildOptic(body, {
-    rTube: 0.0155,
-    len: 0.052,
-    hood: 0.007,
-    y: opticY,
-    z: opticZ,
-    railTop,
-    matBody: 'alu_fine',
-    matSteel: 'steel',
-  });
+  /**
+   * OPTICS ARE NOT PART OF THE BODY.
+   *
+   * Each one is its own assembly so the player can change sight in the middle
+   * of a match without a rebuild — see optics.js. `optics.reddot` is the sight
+   * everything downstream was measured against and stays the default, so the
+   * ADS framing, the eye relief and the reticle aperture are unchanged.
+   */
+  const optics = buildOpticSet({ railTop, opticY, z: opticZ });
+  const optic = optics.reddot.glass;
   /**
    * BACK-UP IRON SIGHTS IN POLYMER, not steel.
    *
@@ -346,6 +347,7 @@ export function buildRifle() {
     label: 'M4A1',
     fxClass: 'carbine',
     body,
+    optics,
     moving: { magazine, charging, bolt, trigger, selector },
     nodes: {
       muzzle: [0, bore, muzzle.crownZ],

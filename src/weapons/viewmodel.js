@@ -422,6 +422,28 @@ export class Viewmodel {
       parts[name] = sub;
     }
 
+    /**
+     * SWAPPABLE OPTICS — every one built now, all but one hidden.
+     *
+     * A weapon build costs ~2.7 s, so rebuilding when the player picks a sight
+     * is not on the table. Five optics are twenty small parts on a receiver that
+     * never changes: build them all here and switching afterwards is a boolean.
+     */
+    const optics = {};
+    if (model.optics) {
+      for (const [name, spec] of Object.entries(model.optics)) {
+        let sub = null;
+        if (spec.asm) {
+          sub = new THREE.Object3D();
+          sub.name = `${model.id}-optic-${name}`;
+          sub.visible = false;
+          group.add(sub);
+          build(spec.asm, sub);
+        }
+        optics[name] = { ...spec, group: sub };
+      }
+    }
+
     // Seat the moving parts at their rest transforms.
     const n = model.nodes;
     if (parts.magazine && n.magSeat) applyNode(parts.magazine, n.magSeat);
@@ -460,10 +482,44 @@ export class Viewmodel {
       magLen: model.magSize?.len ?? 0.2,
       shell: model.shell,
       lhandPose: model.id === 'pistol' ? 'cup' : 'clamp',
+      optics,
+      opticId: null,
     };
     this._fitSupportHand(entry);
     this.weapons.set(model.id, entry);
+    // Default to the sight the ADS framing was measured against.
+    if (optics.reddot) this.setOptic(entry.id, 'reddot');
     return entry;
+  }
+
+  /**
+   * Fit a different sight. Visibility only — nothing is rebuilt.
+   *
+   * The aim point moves with it: `sight` is what the ADS solve lands on the eye
+   * axis (see the ADS pose block in `update`), so swapping the optic swaps where
+   * the weapon has to be held, and a taller mount automatically raises the gun
+   * into the eyeline instead of needing an authored pose per sight.
+   *
+   * @returns {boolean} false if this weapon has no such optic
+   */
+  setOptic(weaponId, opticId) {
+    const w = this.weapons.get(weaponId);
+    const spec = w?.optics?.[opticId];
+    if (!spec) return false;
+    for (const [name, o] of Object.entries(w.optics)) {
+      if (o.group) o.group.visible = name === opticId;
+    }
+    w.opticId = opticId;
+    w.optic = spec.glass;
+    // Irons have no glass, so they aim with the weapon's own BUIS node.
+    w.sight.copy(spec.glass ? _v.set(0, spec.glass.center[1], spec.glass.lensZ) : w.ironSight);
+    return true;
+  }
+
+  /** The magnification currently in front of the eye, 1 when hipfiring. */
+  opticSpec(weaponId) {
+    const w = this.weapons.get(weaponId);
+    return w?.optics?.[w.opticId] ?? null;
   }
 
   /**

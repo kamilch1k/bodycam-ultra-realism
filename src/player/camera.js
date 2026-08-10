@@ -314,7 +314,19 @@ export class CameraRig {
     else if (m.sprinting) moveTarget = F.sprint;
     else if (!m.grounded && m.velocity.y < -6) moveTarget = F.air;
     this.fovMove = approach(this.fovMove, moveTarget, F.moveTau, dt);
-    this.fovAds = approach(this.fovAds, lerp(1, cfg.adsFovScale, ads), F.adsTau, dt);
+    /**
+     * The fitted optic's magnification divides the aimed FOV — and ONLY the
+     * world camera's. The viewmodel has its own camera (see viewmodel.js), and
+     * leaving that alone is what makes a magnified sight read correctly without
+     * a picture-in-picture pass: the tube in your hands keeps its apparent size
+     * while the scene inside it grows. Scale both and the gun swallows the
+     * screen at 4x.
+     *
+     * The approach() below also gives the 1-6x its zoom RAMP for free: the wheel
+     * moves the target and the FOV walks to it over F.adsTau instead of jumping.
+     */
+    const mag = this.ctx.peek('weapons')?.adsMagnification ?? 1;
+    this.fovAds = approach(this.fovAds, lerp(1, cfg.adsFovScale / mag, ads), F.adsTau, dt);
     this.baseFov = cfg.fov;
     this.fov = this.baseFov * this.fovMove * this.fovAds;
 
