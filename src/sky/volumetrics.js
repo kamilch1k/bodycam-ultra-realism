@@ -396,6 +396,13 @@ export class Volumetrics {
 
     const csm = renderSystem.csm;
     this.marchEnabled = opts.volumetrics !== false && !!csm;
+    /**
+     * Whether the march CAN be switched on at all, remembered separately from
+     * whether it currently IS. A preset that started with volumetrics off never
+     * allocated the march targets, so the advanced graphics panel must not
+     * offer a switch that would sample a null render target.
+     */
+    this.marchAvailable = this.marchEnabled;
     const steps = opts.steps ?? 40;
 
     this.shared = shared;

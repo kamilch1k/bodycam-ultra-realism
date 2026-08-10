@@ -3,6 +3,23 @@ import { el, setText, setStyle, clamp, damp, ease } from './util.js';
 const PRESETS = ['low', 'medium', 'high', 'ultra'];
 
 /**
+ * The advanced switches, in the order they cost frame time on the web profile.
+ * Shadows first because they are 1.3 ms of a 4.5 ms frame at 1080p — 326 of the
+ * frame's 644 draw calls and 3.0M of its 5.1M triangles.
+ */
+const FEATURES = [
+  ['shadows', 'Sun Shadows'],
+  ['contact', 'Contact Shadows'],
+  ['gtao', 'Ambient Occlusion'],
+  ['ssr', 'Screen-Space Reflections'],
+  ['volumetrics', 'Volumetric Light'],
+  ['bloom', 'Bloom'],
+  ['motionBlur', 'Motion Blur'],
+  ['dof', 'Depth Of Field'],
+  ['taa', 'Temporal AA'],
+];
+
+/**
  * Pause / settings menu.
  *
  * Wired straight into `ctx.config`: the quality segments call
@@ -35,6 +52,54 @@ export class PauseMenu {
       b.type = 'button';
       b.addEventListener('click', () => this.setQuality(p));
       this.qBtns.push(b);
+    }
+
+    // ---- advanced graphics ------------------------------------------------
+    /**
+     * Per-effect switches, live, on top of the preset.
+     *
+     * A preset is a single dial and it is the wrong shape for "the shadows cost
+     * me a third of my frame but I want to keep the bloom". These call straight
+     * into the render subsystem's `setFeature`, which gates each pass behind a
+     * getter — no reload, no pipeline rebuild.
+     *
+     * A preset that never CONSTRUCTED a pass cannot switch it on (the object
+     * does not exist), so those rows render disabled and say why rather than
+     * offering a dead toggle. Raise the preset and they come alive.
+     */
+    this.advOpen = false;
+    const advRow = this._row('Advanced');
+    this.advBtn = el('button', 'ow-btn', advRow, 'Show');
+    this.advBtn.type = 'button';
+    this.advBtn.addEventListener('click', () => {
+      this.advOpen = !this.advOpen;
+      setText(this.advBtn, this.advOpen ? 'Hide' : 'Show');
+      setStyle(this.adv, 'display', this.advOpen ? '' : 'none');
+      if (this.advOpen) this.syncFromConfig();
+    });
+    this.adv = el('div', null, this.rows);
+    setStyle(this.adv, 'display', 'none');
+    this.featBtns = [];
+    for (const [key, label] of FEATURES) {
+      const r = el('div', 'ow-row', this.adv);
+      el('div', 'name', r, label.toUpperCase());
+      const seg = el('div', 'ow-seg', r);
+      const pair = [];
+      for (const [txt, on] of [
+        ['off', false],
+        ['on', true],
+      ]) {
+        const b = el('button', null, seg, txt);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          this._setFeature(key, on);
+          this.ctx.events.emit('ui:setting', { key: `gfx.${key}`, value: on });
+          this.syncFromConfig();
+        });
+        pair.push([b, on]);
+      }
+      const note = el('div', 'val', r, '');
+      this.featBtns.push({ key, pair, note });
     }
 
     // ---- sensitivity -----------------------------------------------------
@@ -132,6 +197,30 @@ export class PauseMenu {
     return api;
   }
 
+  /**
+   * Volumetric light lives in `sky`, everything else in `render` — the panel is
+   * the only place that has to know which, so the two subsystems stay unaware
+   * of each other.
+   */
+  _setFeature(key, on) {
+    if (key === 'volumetrics') {
+      const v = this.ctx.peek('sky')?.volumetrics;
+      if (v?.marchAvailable) v.marchEnabled = !!on;
+      return;
+    }
+    this.ctx.peek('render')?.setFeature?.(key, on);
+  }
+
+  _featureState(key) {
+    if (key === 'volumetrics') {
+      const v = this.ctx.peek('sky')?.volumetrics;
+      return { available: !!v?.marchAvailable, on: !!v?.marchEnabled };
+    }
+    const r = this.ctx.peek('render');
+    if (!r) return { available: false, on: false };
+    return { available: !!r.featureAvailable?.(key), on: !!r.opt?.[key] };
+  }
+
   setQuality(name) {
     try {
       this.ctx.config.setQuality(name);
@@ -147,6 +236,15 @@ export class PauseMenu {
     for (let i = 0; i < this.qBtns.length; i++)
       this.qBtns[i].classList.toggle('on', PRESETS[i] === cfg.quality);
     for (const [b, v] of this.invBtns) b.classList.toggle('on', !!cfg.invertY === v);
+    for (const f of this.featBtns ?? []) {
+      const st = this._featureState(f.key);
+      for (const [b, v] of f.pair) {
+        b.classList.toggle('on', st.available && st.on === v);
+        b.disabled = !st.available;
+        setStyle(b, 'opacity', st.available ? '' : '0.35');
+      }
+      setText(f.note, st.available ? '' : 'preset');
+    }
     this.sens?.set((cfg.sensitivity ?? 0.0022) / 0.0022);
     this.fov?.set(cfg.fov ?? 80);
   }

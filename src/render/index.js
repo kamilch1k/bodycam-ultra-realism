@@ -195,15 +195,44 @@ export class RenderSystem {
     });
 
     this.gbuffer = new GBuffer();
-    this.gtao = q.gtao ? new Gtao() : null;
-    this.contact = this.qLevel >= 1 ? new ContactShadows() : null;
-    this.ssr = q.ssr ? new Ssr() : null;
-    this.taa = q.taa ? new Taa() : null;
-    this.motionBlur = q.motionBlur ? new MotionBlur() : null;
+    this._gtao = q.gtao ? new Gtao() : null;
+    this._contact = this.qLevel >= 1 ? new ContactShadows() : null;
+    this._ssr = q.ssr ? new Ssr() : null;
+    this._taa = q.taa ? new Taa() : null;
+    this._motionBlur = q.motionBlur ? new MotionBlur() : null;
     // ADS depth of field. Cheap (half-res gather, 32 taps) and only ever runs
     // while the sights are actually up, so it costs nothing in hipfire.
-    this.dof = this.qLevel >= 1 ? new DepthOfField() : null;
-    this.bloom = q.bloom ? new Bloom(this.qLevel >= 2 ? 6 : 5) : null;
+    this._dof = this.qLevel >= 1 ? new DepthOfField() : null;
+    this._bloom = q.bloom ? new Bloom(this.qLevel >= 2 ? 6 : 5) : null;
+
+    /**
+     * PER-FEATURE SWITCHES for the advanced graphics panel.
+     *
+     * The pipeline is written as `if (this.gtao)` in a dozen places, and each
+     * pass is either constructed at boot or null forever. Rather than thread a
+     * flag through every one of those sites, the passes live on underscored
+     * fields and the public names are getters that return null while the
+     * feature is off — so every existing guard turns the pass off for free, and
+     * turning it back on costs nothing but the flag.
+     *
+     * Resize and reset deliberately use the underscored fields: a pass that is
+     * switched off still has to track the framebuffer size, or re-enabling it
+     * mid-match samples a stale target.
+     *
+     * A pass that was never constructed (its preset had it off) cannot be
+     * switched on here — `featureAvailable` reports that, so the panel can say
+     * so instead of offering a dead switch.
+     */
+    this.opt = {
+      shadows: true,
+      contact: true,
+      gtao: true,
+      ssr: true,
+      taa: true,
+      motionBlur: true,
+      dof: true,
+      bloom: true,
+    };
     this.exposure = new AutoExposure();
     // Headroom for a physically-scaled sky (sunlit scenes reach ~5000 cd/m2).
     // The lower limit is the night exposure lock: a moonlit street meters at
@@ -493,6 +522,40 @@ export class RenderSystem {
    * write a full-screen result into `outputTarget`.
    * `pass.order` (default 0) controls ordering; `pass.enabled !== false`.
    */
+  /* ---- live feature switches (see `this.opt`) --------------------------- */
+  get gtao() { return this.opt.gtao ? this._gtao : null; }
+  get contact() { return this.opt.contact ? this._contact : null; }
+  get ssr() { return this.opt.ssr ? this._ssr : null; }
+  get taa() { return this.opt.taa ? this._taa : null; }
+  get motionBlur() { return this.opt.motionBlur ? this._motionBlur : null; }
+  get dof() { return this.opt.dof ? this._dof : null; }
+  get bloom() { return this.opt.bloom ? this._bloom : null; }
+
+  /** Which switches can actually do anything — the rest need a preset change. */
+  featureAvailable(key) {
+    if (key === 'shadows') return true;
+    return !!this[`_${key}`];
+  }
+
+  /**
+   * Turn one effect on or off, live. `shadows` goes through the CSM's own
+   * enable flag; everything else is a getter gate.
+   */
+  setFeature(key, on) {
+    on = !!on;
+    if (key === 'shadows') {
+      this.opt.shadows = on;
+      this.csm.enabled = on;
+      this.renderer.shadowMap.enabled = on;
+      this._taa?.reset();
+      return true;
+    }
+    if (!(key in this.opt)) return false;
+    this.opt[key] = on;
+    this._taa?.reset();
+    return true;
+  }
+
   registerPass(pass) {
     this.passes.push(pass);
     this.passes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -731,32 +794,34 @@ export class RenderSystem {
     add(this.composite);
     add(this.viewComposite);
     add(this.fxaa);
-    if (this.gtao) {
-      add(this.gtao.core);
-      add(this.gtao.temporal);
-      add(this.gtao.blur);
+    // Underscored on purpose: a pass the panel has switched OFF still gets its
+    // shader warmed, so switching it back on mid-match does not stall a frame.
+    if (this._gtao) {
+      add(this._gtao.core);
+      add(this._gtao.temporal);
+      add(this._gtao.blur);
     }
-    if (this.contact) {
-      add(this.contact.pass);
-      add(this.contact.blur);
+    if (this._contact) {
+      add(this._contact.pass);
+      add(this._contact.blur);
     }
-    if (this.ssr) {
-      add(this.ssr.pass);
-      add(this.ssr.blur);
+    if (this._ssr) {
+      add(this._ssr.pass);
+      add(this._ssr.blur);
     }
-    if (this.taa) add(this.taa.pass);
-    if (this.motionBlur) {
-      add(this.motionBlur.tilePass);
-      add(this.motionBlur.blurPass);
+    if (this._taa) add(this._taa.pass);
+    if (this._motionBlur) {
+      add(this._motionBlur.tilePass);
+      add(this._motionBlur.blurPass);
     }
-    if (this.dof) {
-      add(this.dof.pre);
-      add(this.dof.gather);
-      add(this.dof.combine);
+    if (this._dof) {
+      add(this._dof.pre);
+      add(this._dof.gather);
+      add(this._dof.combine);
     }
-    if (this.bloom) {
-      add(this.bloom.down);
-      add(this.bloom.up);
+    if (this._bloom) {
+      add(this._bloom.down);
+      add(this._bloom.up);
     }
     add(this.exposure.logPass);
     add(this.exposure.reducePass);
@@ -910,13 +975,13 @@ export class RenderSystem {
     });
 
     this.gbuffer.setSize(rw, rh);
-    this.gtao?.setSize(rw, rh);
-    this.contact?.setSize(rw, rh);
-    this.ssr?.setSize(rw, rh);
-    this.taa?.setSize(rw, rh);
-    this.motionBlur?.setSize(rw, rh);
-    this.dof?.setSize(rw, rh);
-    this.bloom?.setSize(rw, rh);
+    this._gtao?.setSize(rw, rh);
+    this._contact?.setSize(rw, rh);
+    this._ssr?.setSize(rw, rh);
+    this._taa?.setSize(rw, rh);
+    this._motionBlur?.setSize(rw, rh);
+    this._dof?.setSize(rw, rh);
+    this._bloom?.setSize(rw, rh);
 
     this.patcher.setScreenSize(rw, rh);
     this.viewComposite.uniforms.uTexel.value.set(1 / rw, 1 / rh);
@@ -929,7 +994,7 @@ export class RenderSystem {
     this.normalTexture = this.gbuffer.normalTexture;
 
     for (const p of this.passes) p.resize?.(rw, rh);
-    this.taa?.reset();
+    this._taa?.reset();
     this.exposure.reset();
   }
 
@@ -1666,13 +1731,14 @@ export class RenderSystem {
   dispose() {
     this.csm.dispose();
     this.gbuffer.dispose();
-    this.gtao?.dispose();
-    this.contact?.dispose();
-    this.ssr?.dispose();
-    this.taa?.dispose();
-    this.motionBlur?.dispose();
-    this.dof?.dispose();
-    this.bloom?.dispose();
+    // Underscored: a feature switched off in the panel must still be released.
+    this._gtao?.dispose();
+    this._contact?.dispose();
+    this._ssr?.dispose();
+    this._taa?.dispose();
+    this._motionBlur?.dispose();
+    this._dof?.dispose();
+    this._bloom?.dispose();
     this.exposure.dispose();
     this.composite.dispose();
     this.viewComposite.dispose();
