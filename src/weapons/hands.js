@@ -537,7 +537,9 @@ export class Arm {
      * plane, filling half the screen with forearm. Elbows go down and outboard,
      * always, exactly as they do on a real shooter.
      */
-    this.pole = new THREE.Vector3(side * 0.46, -0.86, 0.22).normalize();
+    this.pole = opts.pole
+      ? new THREE.Vector3().fromArray(opts.pole).normalize()
+      : new THREE.Vector3(side * 0.46, -0.86, 0.22).normalize();
 
     // Bones. Geometry extends along -Z from each joint.
     /**

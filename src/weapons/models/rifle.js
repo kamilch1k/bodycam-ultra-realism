@@ -165,11 +165,24 @@ export function buildRifle() {
    * teeth, and a support hand that does not close is the reason the glove read as
    * detached slabs floating beside the gun.
    */
-  // Where the support hand's knuckles cross the handguard. Moved 10 mm rearward
-  // (was -0.245) when the hipfire pose pushed the weapon out to 300 mm: the
-  // support arm is reach-limited, and every 10 mm off the contact is elbow bend
-  // recovered. 150 mm of handguard remains ahead of the hand.
-  const handZ = -0.235;
+  /**
+   * Where the support hand's knuckles cross the handguard.
+   *
+   * This number is NOT independent of `hipPos.z` in defs.js — move one without
+   * the other and the support arm breaks. At -0.235 the hand sat 65 mm from the
+   * REAR of a 240 mm handguard, tucked under the receiver: a part-by-part colour
+   * render showed all four fingers and the thumb fully occluded, so what reached
+   * the screen was a blunt sleeve meeting a shapeless dark blob. That, not the
+   * joint angle, is what read as a hand bent the wrong way.
+   *
+   * Moving it forward alone does not work: -0.30 against the old 300 mm weapon
+   * offset puts the wrist at 103.9% of the 611 mm arm, the two-bone solve clamps,
+   * and the elbow locks into the broomstick. So the weapon came back 45 mm at the
+   * same time (defs.js hipPos.z -0.30 -> -0.255) and the hand went forward 50 mm.
+   * The two cancel: reach 94.8%, wrist 47.2 deg — both unchanged — but the grip is
+   * now 85 mm clear of the receiver and the fingers wrap in open view.
+   */
+  const handZ = -0.285;
   addHandguard(body, 'alu', {
     matPanel: 'polymer',
     y: bore,
@@ -431,6 +444,28 @@ export function buildRifle() {
        * at the heel, which is what a glove does when it is squeezing something.
        * The per-fingertip solve re-runs against this target at build time and just
        * uses less curl, so the contact is preserved.
+       */
+      /**
+       * DO NOT ROLL THIS AROUND THE TUBE TO FLATTEN THE WRIST.
+       *
+       * The wrist sits at ~47 deg between the forearm axis and the hand's
+       * metacarpal axis, and that is the floor for this pose: 2942 shoulder and
+       * elbow placements were swept and none beat 47.7 deg, and twisting the
+       * hand about its own palm normal bottoms out at 46 deg. The one thing that
+       * DOES move the number is the clock angle around the barrel — rolling pos,
+       * finger and back together by +30 deg takes the wrist to 24.8 deg with
+       * reach unchanged.
+       *
+       * It was tried, and it looks worse, which is why the measurement is
+       * recorded here rather than applied. Rolling the wrist target does not
+       * roll the finger CURLS with it: `fitToCylinder` only searches each distal
+       * joint, so with the hand moved a third of the way round the tube the
+       * fingers close on air below the handguard and the grip reads as a hand
+       * holding nothing. A flatter wrist on a hand that is not touching the gun
+       * is not an improvement.
+       *
+       * Making the roll work needs the `clamp` pose curls re-authored for the new
+       * clock angle, not a different vector here.
        */
       gripL: {
         pos: [-0.1, 0.0734, handZ + 0.0252],

@@ -108,8 +108,16 @@ export const WEAPON_DEFS = {
      * frame height. It is also the limit — the support hand is then 620 mm
      * downrange of a shoulder 200 mm off the eye, and a 572 mm arm has nothing
      * left. The butt pad ends up 60 mm in FRONT of the eye but 140 mm off axis,
-     * so it is outside the frustum rather than clipped by the near plane. */
-    hipPos: [0.118, -0.185, -0.3],
+     * so it is outside the frustum rather than clipped by the near plane.
+     *
+     * z = -0.255 (was -0.30) PAIRED WITH handZ -0.285 in models/rifle.js. The
+     * reach note above is why the support hand had to sit at the rear of the
+     * handguard, under the receiver, where the whole grip was occluded. Bringing
+     * the weapon 45 mm back and the hand 50 mm forward cancels in reach terms —
+     * measured 94.8% either way, wrist 47.2 deg either way — while moving the
+     * grip out from behind the receiver so the fingers are visible on the tube.
+     * Change one of the two and the arm clamps; change both together. */
+    hipPos: [0.118, -0.185, -0.255],
     hipRot: [-0.05, 0.081, -0.135],
     adsCant: [0, 0, 0.004],
     /* Eye to the rear lens.

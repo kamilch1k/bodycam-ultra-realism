@@ -25,7 +25,10 @@ const capture = params.get('capture') === '1';
 const lockstep = capture && params.get('lockstep') === '1';
 
 const config = createConfig({
-  quality: params.get('q') ?? 'ultra',
+  // Keep the launch path friendly to browser portals. Use ?q=ultra when
+  // comparing the full desktop-quality renderer.
+  quality: params.get('q') ?? 'low',
+  map: params.get('map') ?? 'street',
   deterministic: capture,
 });
 
@@ -76,7 +79,29 @@ const shotApi = installShotApi(engine, { capture, lockstep });
 // lockstep in src/dev/shots.js; (2) `will-change: transform` on the compass strip
 // cached a composited-layer raster taken at a wall-clock-dependent moment — fixed
 // in src/ui/style.js.
-const warmup = params.get('prewarm') === '0' ? { ok: false, reason: 'disabled by ?prewarm=0' } : await prewarm(engine);
+// OFF by default. This was tried both ways and MEASURED both ways.
+//
+//   prewarm on   boot 48 s, worst in-play frame 69 ms
+//   prewarm off  boot  5 s, worst in-play frame 1005 ms
+//
+// The pre-warm does what it claims — it removes the multi-second compile stalls
+// described above — but it costs a flat ~20 s of BLOCKED MAIN THREAD (134
+// programs at ~150 ms each; it is already parallel inside each batch, so that is
+// simply what ANGLE charges for shaders this size). A player does not experience
+// that as a loading screen, they experience it as a dead page: nothing renders,
+// the menu does not respond to clicks, and the tab looks hung.
+//
+// One 1-second hitch beats 48 seconds of frozen tab, so the default is a fast
+// boot. `?prewarm=1` buys the stall-free run for anyone profiling or recording.
+//
+// The real fix is neither flag: it is FEWER AND SIMPLER PROGRAMS (206 live, 134
+// pre-warmed), or a pre-warm that runs incrementally across frames once the
+// game is already interactive. Both are bigger than a config change — see
+// CLAUDE_HANDOFF.md.
+const warmup =
+  params.get('prewarm') === '1'
+    ? await prewarm(engine)
+    : { ok: false, reason: 'off by default — ?prewarm=1 to compile everything up front' };
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
 

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Assembler } from './builder.js';
 import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { buildGround } from './ground.js';
+import { buildWhitebox } from './whitebox.js';
 import { buildBuilding, collapseRoof } from './buildings.js';
 import { registerProps } from './props.js';
 import {
@@ -107,32 +108,47 @@ export class WorldSystem {
     this.A = A;
     A.setTransform(LEVEL_YAW, LEVEL_TX, LEVEL_TZ);
 
-    // 1. prototypes first: the level references them by id while it builds
-    registerProps(A, rng);
-    registerDressingProps(A, rng);
+    // `?map=box` swaps the level for a greybox arena: one surface, one box
+    // prototype, no props, no dressing, no practicals. Everything skipped here
+    // is load time — see whitebox.js.
+    const box = ctx.config.map === 'box';
+    if (box) buildWhitebox(A);
 
-    // 2. ground, then the shells, then what people put in and on them
-    buildGround(A, rng);
+    // 1. prototypes first: the level references them by id while it builds
+    if (!box) {
+      registerProps(A, rng);
+      registerDressingProps(A, rng);
+
+      // 2. ground, then the shells, then what people put in and on them
+      buildGround(A, rng);
+    }
 
     const infos = [];
-    for (const spec of BUILDINGS) {
-      const info = buildBuilding(A, rng, spec);
-      infos.push(info);
-      if (spec.collapse) {
-        collapseRoof(A, rng, spec, info, {
-          x: spec.x + rng.range(-2, 2),
-          z: spec.z + rng.range(-2, 2),
-        });
+    if (!box) {
+      for (const spec of BUILDINGS) {
+        const info = buildBuilding(A, rng, spec);
+        infos.push(info);
+        if (spec.collapse) {
+          collapseRoof(A, rng, spec, info, {
+            x: spec.x + rng.range(-2, 2),
+            z: spec.z + rng.range(-2, 2),
+          });
+        }
       }
     }
     this.buildings = infos;
 
-    buildGate(A, rng);
-    buildPerimeter(A, rng);
-    dressStreet(A, rng);
-    dressBuildings(A, rng, infos);
-    scatterDebris(A, rng);
+    if (!box) {
+      buildGate(A, rng);
+      buildPerimeter(A, rng);
+      dressStreet(A, rng);
+      dressBuildings(A, rng, infos);
+      scatterDebris(A, rng);
+    }
 
+    // Runs for the box map too: with no interior bulbs or lamp anchors to find
+    // it adds no real lights, but it still sets up `bulbs`/`lamps` and the
+    // zero-intensity ballast that holds the shader permutation constant.
     this._addLights(A);
 
     A.finalize(this.root, physics);

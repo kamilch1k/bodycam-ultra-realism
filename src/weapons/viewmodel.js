@@ -145,6 +145,29 @@ export class Viewmodel {
       shoulderY: -0.22,
       shoulderZ: 0.02,
       pose: 'clamp',
+      /**
+       * ELBOW SWING, MEASURED AGAINST THE WRIST ANGLE.
+       *
+       * The wrist is not free: the hand target is welded to the handguard by the
+       * build-time contact solve, so the only thing that decides how far the
+       * wrist is bent is where the elbow sits on the IK circle — which is what
+       * this pole picks.
+       *
+       * The shared default (side*0.46, -0.86, 0.22) drops the elbow to
+       * (-0.236, -0.093, -0.013) and leaves 64.4 deg between the forearm axis
+       * and the hand's metacarpal axis. A wrist does about 70 deg of extension
+       * and 30 deg of ulnar deviation, so 64 deg of the two combined is at the
+       * limit, and on screen the sleeve and the glove meet at a hard corner that
+       * reads as a broken joint rather than a wrist.
+       *
+       * Swept the pole over the down/outboard hemisphere and measured the angle
+       * at each: taking the elbow 59 mm further OUTBOARD and 66 mm up puts it at
+       * (-0.295, -0.027, -0.018) for 46.9 deg — comfortably inside the envelope.
+       * The elbow stays outboard of the shoulder and behind the near plane
+       * (z -0.018), so it does not enter frame; only the forearm does, which is
+       * the same limb that was in frame before.
+       */
+      pole: [-1.2, -0.4, 0],
     });
     this.rig.add(this.armR.root);
     this.rig.add(this.armL.root);

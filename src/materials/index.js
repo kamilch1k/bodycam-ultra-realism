@@ -55,7 +55,41 @@ export class MaterialSystem {
     // Texture budget scales with the quality preset; 1K is the reference.
     this._quality =
       ctx?.config?.quality === 'low' ? 0.5 : ctx?.config?.quality === 'medium' ? 0.75 : 1;
+    /**
+     * Drop the per-pixel marches on the web profile.
+     *
+     * `OW_PARALLAX` is a 22-iteration texture march and `OW_DETILE` a multi-tap
+     * blend, and both are in the define set that keys the program cache — so
+     * they cost twice. Every one of the "X3595: gradient instruction used in a
+     * loop with varying iteration" warnings ANGLE prints at boot is that march:
+     * a loop with texture gradients in it is the worst case for the HLSL
+     * compiler, which is why programs here run ~150 ms EACH to compile and why
+     * first load and the in-play stalls are both measured in seconds.
+     *
+     * Turning them off at `low` shrinks the shaders and collapses several define
+     * combinations into one, so there are fewer programs AND each is cheaper.
+     * The surfaces keep their albedo, normal, ORM, detail and macro layers —
+     * what is lost is the illusion of depth at grazing angles.
+     */
+    this._simple = ctx?.config?.quality === 'low';
     this._tryBuild();
+    await this._warmPrograms();
+  }
+
+  /**
+   * Compile every library surface program up front, in parallel.
+   *
+   * Without this the bakes happen one at a time as `world` asks for them, and
+   * each one stalls on its own shader translation: measured 15.8 s of world
+   * init, of which 14.0 s was 17 serial compiles (concrete 2.5 s, plaster
+   * 2.6 s, brick 1.6 s). See `TextureForge.warm`.
+   */
+  async _warmPrograms() {
+    if (!this._built) return;
+    const t0 = performance.now();
+    const defs = Object.entries(LIBRARY).map(([key, def]) => ({ key, glsl: def.glsl }));
+    const n = await this._forge.warm(defs);
+    if (n) console.info(`[materials] warmed ${n} programs ${(performance.now() - t0).toFixed(0)}ms`);
   }
 
   // ------------------------------------------------------------- internals --
@@ -188,6 +222,10 @@ export class MaterialSystem {
     const p = { ...DEFAULT_PARAMS, ...def.mat, ...opts };
     delete p.three;
     delete p.bake;
+    if (this._simple) {
+      p.parallax = 0;
+      p.detile = 0;
+    }
     p.groundY = opts.groundY ?? this._groundY;
 
     const threeProps = { ...(def.three ?? {}), ...(opts.three ?? {}) };

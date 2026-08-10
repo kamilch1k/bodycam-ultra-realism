@@ -321,6 +321,40 @@ export class TextureForge {
   }
 
   /**
+   * Issue the compile+link for a batch of surface programs at once.
+   *
+   * A bake is three or four full-screen draws of a 512px quad — measured at
+   * 0.8 ms once the program exists. The 0.3-2.6 SECONDS each one costs at boot
+   * is ANGLE translating the noise stack to HLSL and running FXC, serially,
+   * because `render()` blocks on LINK_STATUS. `compileAsync` links every
+   * program first and only then polls COMPLETION_STATUS_KHR, so the driver
+   * translates the whole library on its own threads.
+   *
+   * A render target must be bound: `outputColorSpace` is part of the program
+   * cache key and three reports LinearSRGB for every non-XR target but the
+   * renderer's own output colour space for the canvas — compiling with the
+   * canvas bound warms a variant the bake path never uses.
+   */
+  async warm(defs) {
+    const r = this.renderer;
+    if (!r.extensions.has('KHR_parallel_shader_compile')) return 0;
+    const scene = new THREE.Scene();
+    for (const d of defs) {
+      const mesh = new THREE.Mesh(this._geo, this._material(d.key, d.glsl));
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+    }
+    const prev = r.getRenderTarget();
+    r.setRenderTarget(this._heightRT(256));
+    try {
+      await r.compileAsync(scene, this._camera);
+    } finally {
+      r.setRenderTarget(prev);
+    }
+    return defs.length;
+  }
+
+  /**
    * Free the scratch height targets.
    *
    * They are pure intermediates — the Sobel pass reads one and nothing else

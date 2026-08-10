@@ -59,7 +59,7 @@ export class AiSystem {
 
     const t0 = performance.now();
     this.materials = new SoldierMaterials(this.rng.fork(), {
-      size: 512,
+      size: ctx.config.q.charTextureSize ?? 512,
       anisotropy: ctx.config.q.anisotropy ?? 8,
       camo: ['arid', 'woodland', 'urban'],
     });

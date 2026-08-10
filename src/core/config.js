@@ -20,10 +20,18 @@ export const UNITS = {
 
 export const QUALITY_PRESETS = {
   low: {
-    renderScale: 0.72,
+    // Web-first default: keep the scene readable while avoiding the expensive
+    // desktop-only effects that make the first frame and steady-state GPU cost
+    // too high for Yandex/Crazy Games hardware.
+    renderScale: 0.80,
     shadowMapSize: 1024,
-    cascades: 3,
-    shadowDistance: 60,
+    // ONE cascade, close in. Measured at 1080p: the shadow pass is 326 of the
+    // frame's 644 draw calls and 3.0M of its 5.1M triangles, for 1.3 ms of a
+    // 4.5 ms frame — by far the biggest single item left. One short cascade
+    // keeps objects sitting ON the ground (drop it entirely and everything
+    // floats) and gives most of that back.
+    cascades: 1,
+    shadowDistance: 45,
     taa: false,
     gtao: false,
     ssr: false,
@@ -31,8 +39,11 @@ export const QUALITY_PRESETS = {
     motionBlur: false,
     bloom: true,
     anisotropy: 4,
-    particleBudget: 2000,
-    decalBudget: 64,
+    // Character texture bake is on the CPU (src/ai/textures.js) and is O(size^2):
+    // 512px cost 7.6 s of boot, 256px costs a quarter of that.
+    charTextureSize: 256,
+    particleBudget: 3500,
+    decalBudget: 96,
   },
   medium: {
     renderScale: 0.85,
@@ -46,6 +57,7 @@ export const QUALITY_PRESETS = {
     motionBlur: true,
     bloom: true,
     anisotropy: 8,
+    charTextureSize: 512,
     particleBudget: 6000,
     decalBudget: 128,
   },
@@ -61,6 +73,7 @@ export const QUALITY_PRESETS = {
     motionBlur: true,
     bloom: true,
     anisotropy: 16,
+    charTextureSize: 512,
     particleBudget: 12000,
     decalBudget: 256,
   },
@@ -76,13 +89,18 @@ export const QUALITY_PRESETS = {
     motionBlur: true,
     bloom: true,
     anisotropy: 16,
+    charTextureSize: 512,
     particleBudget: 24000,
     decalBudget: 512,
   },
 };
 
 export const DEFAULTS = {
-  quality: 'ultra',
+  // Start in the web-safe profile. Desktop players can opt into `?q=high` or
+  // `?q=ultra`, and the in-game quality menu still exposes every preset.
+  quality: 'low',
+  /** Level to build: 'street' (the full map) or 'box' (greybox arena). */
+  map: 'street',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,
