@@ -603,54 +603,70 @@ export class Viewmodel {
     if (!w) return;
     const r = w.def.recoil;
     const ads = this.adsT;
-    // Aiming braces the weapon: less travel, faster return.
-    const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1);
     /**
-     * ADS does not brace the weapon EVENLY, and treating it as one scale is why
-     * aimed fire used to climb the sight picture off the target.
+     * AIMED FIRE IS A CLEAN PUSH ALONG THE BARREL. NOTHING ELSE.
      *
-     * With the stock in the shoulder and the eye on the optic, the recoil
-     * impulse has nowhere to go but straight back into the shooter — so the
-     * viewmodel travels FURTHER rearward (toward the camera) and much LESS
-     * vertically. Hipfire is the opposite: nothing is bracing it, so the muzzle
-     * flips up.
+     * Every axis here was a separate source of the "shaky, weird" feel, and
+     * damping one of them (the pitch kick) was not enough — with the eye on the
+     * optic, ANY motion that is not straight back reads as the sight picture
+     * coming apart. Six things contribute and all six are taken out together at
+     * full ADS:
+     *
+     *   vertical position   the muzzle lifting off the target        -> 0
+     *   rotational pitch    the muzzle flipping up                   -> 0
+     *   lateral position    a random left/right shove every shot     -> 8%
+     *   roll                a random cant every shot                 -> 12%
+     *   yaw                 random horizontal wander                 -> 25%
+     *   per-shot jitter     random MAGNITUDE, so no two kicks match  -> none
+     *
+     * The last one matters as much as the rest: a kick that varies 0.86-1.16x
+     * shot to shot cannot be anticipated, and an impulse you cannot anticipate
+     * is exactly what "shaky" means. Aimed, every shot now kicks identically.
+     *
+     * DAMPING is the sixth fix and the least obvious. The return spring runs at
+     * z=0.42 — underdamped, so the weapon does not return to rest, it OVERSHOOTS
+     * and oscillates about it. In hipfire that reads as life. Down the sights it
+     * is a wobble on top of the kick, so aiming takes the spring to nearly
+     * critical (0.92) and it settles in one move.
+     *
+     * Hipfire keeps all of it: nothing is bracing the weapon there and it should
+     * flip, cant and wander.
      */
+    const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1);
     const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1);
-    const upScale = lerp(1, 0.1, ads) * (first ? 1.18 : 1);
-    const jitter = 0.86 + this.rng.float() * 0.3;
+    const upScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
+    const pitchScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
+    const lateralScale = lerp(1, 0.08, ads);
+    const rollScale = lerp(1, 0.12, ads);
+    const yawScale = lerp(1, 0.25, ads);
+    const driftScale = lerp(1, 0.12, ads);
+    // 1.0 = no shot-to-shot variation.
+    const jitter = lerp(0.86 + this.rng.float() * 0.3, 1, ads);
+
     this.recPos.f = r.freq;
-    this.recPos.z = r.damping;
+    this.recPos.z = lerp(r.damping, 0.92, ads);
     this.recRot.f = r.freq * 0.92;
-    this.recRot.z = r.damping;
+    this.recRot.z = lerp(r.damping, 0.92, ads);
     // A velocity impulse of v0 on a spring of angular frequency w peaks at
     // roughly v0/w, so the kick amplitudes below are in real metres/radians.
     const wp = TAU * this.recPos.f;
     const wr = TAU * this.recRot.f;
     this.recPos.kick(
-      this.rng.signed() * r.kickBack * 0.2 * backScale * wp,
+      this.rng.signed() * r.kickBack * 0.2 * lateralScale * scale * wp,
       r.kickUp * upScale * jitter * wp,
       r.kickBack * backScale * jitter * wp
     );
-    /**
-     * The rotational PITCH kick is what makes the gun shake vertically, and it
-     * is driven off the same `r.pitch` as the camera climb — so raising the real
-     * recoil doubled the visual shake as a side effect. Aimed fire needs the two
-     * decoupled: with the eye on the optic the sight picture has to stay on the
-     * target, so the muzzle flip is nearly removed and the kick is carried by
-     * the rearward travel instead.
-     */
-    const pitchScale = lerp(1, 0.12, ads) * (first ? 1.18 : 1);
     this.recRot.kick(
       (pitch * 5.5 + r.pitch * 1.4) * pitchScale * jitter * wr,
-      (-yaw * 4.5 - this.rng.signed() * r.yaw * 0.8) * scale * wr,
-      (this.rng.signed() * 0.4 + 0.6) * r.roll * scale * wr
+      (-yaw * 4.5 - this.rng.signed() * r.yaw * 0.8) * yawScale * scale * wr,
+      (this.rng.signed() * 0.4 + 0.6) * r.roll * rollScale * scale * wr
     );
     // Slow settling drift after a burst — the muzzle keeps wandering a little.
     const ws = TAU * this.settle.f;
     this.settle.kick(
-      this.rng.signed() * 0.0012 * scale * ws,
-      0.0018 * scale * ws,
-      this.rng.signed() * 0.003 * scale * ws
+      this.rng.signed() * 0.0012 * driftScale * scale * ws,
+      0.0018 * driftScale * scale * ws,
+      this.rng.signed() * 0.003 * driftScale * scale * ws
     );
     this.boltCycle = 1;
   }
