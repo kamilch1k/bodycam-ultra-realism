@@ -623,31 +623,34 @@ export class Viewmodel {
      * shot to shot cannot be anticipated, and an impulse you cannot anticipate
      * is exactly what "shaky" means. Aimed, every shot now kicks identically.
      *
-     * DAMPING is the sixth fix and the least obvious. The return spring runs at
-     * z=0.42 — underdamped, so the weapon does not return to rest, it OVERSHOOTS
-     * and oscillates about it. In hipfire that reads as life. Down the sights it
-     * is a wobble on top of the kick, so aiming takes the spring to nearly
-     * critical (0.92) and it settles in one move.
+     * DAMPING is the sixth fix and the least obvious. The return spring used to
+     * run at the def's z=0.42 in hipfire — underdamped, so the weapon does not
+     * return to rest, it OVERSHOOTS and oscillates about it. That was sold as
+     * "life"; at 800 rpm it is a second kick arriving out of phase with the next
+     * shot, and it is the single biggest reason hipfire read as harsh. Hipfire
+     * now runs at 0.74 (still visibly springy, but it settles), aimed at 0.92.
      *
-     * Hipfire keeps all of it: nothing is bracing the weapon there and it should
-     * flip, cant and wander.
+     * Hipfire keeps the CHARACTER of the full kick — flip, cant, wander — at
+     * roughly half the old amplitude, and the random per-shot magnitude is
+     * narrowed to +-7% (was +-15%). Randomness you cannot anticipate is what
+     * "unsmooth" means; a little is texture, a lot is noise.
      */
     const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1);
     const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1);
     const upScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
     const pitchScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
-    const lateralScale = lerp(1, 0.08, ads);
+    const lateralScale = lerp(0.5, 0.08, ads);
     // Hipfire cant was overdone: the gun visibly tipped on every shot.
-    const rollScale = lerp(0.42, 0.12, ads);
-    const yawScale = lerp(1, 0.25, ads);
-    const driftScale = lerp(1, 0.12, ads);
+    const rollScale = lerp(0.26, 0.12, ads);
+    const yawScale = lerp(0.62, 0.25, ads);
+    const driftScale = lerp(0.55, 0.12, ads);
     // 1.0 = no shot-to-shot variation.
-    const jitter = lerp(0.86 + this.rng.float() * 0.3, 1, ads);
+    const jitter = lerp(0.93 + this.rng.float() * 0.14, 1, ads);
 
     this.recPos.f = r.freq;
-    this.recPos.z = lerp(r.damping, 0.92, ads);
+    this.recPos.z = lerp(0.74, 0.92, ads);
     this.recRot.f = r.freq * 0.92;
-    this.recRot.z = lerp(r.damping, 0.92, ads);
+    this.recRot.z = lerp(0.74, 0.92, ads);
     // A velocity impulse of v0 on a spring of angular frequency w peaks at
     // roughly v0/w, so the kick amplitudes below are in real metres/radians.
     const wp = TAU * this.recPos.f;
@@ -711,6 +714,8 @@ export class Viewmodel {
     }
 
     /* -------- angular velocity for the lag layer ---------------------- */
+    // Safe against the camera's roll: the rig composes YXZ and this decomposes
+    // YXZ, so the bank cancels exactly and never shows up as a phantom turn.
     _e.setFromQuaternion(this.anchor.quaternion, 'YXZ');
     const yaw = _e.y;
     const pitch = _e.x;

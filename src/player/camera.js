@@ -56,6 +56,8 @@ export class CameraRig {
 
     // ---- rolls -----------------------------------------------------------
     this.strafeRoll = 0;
+    /** Intermediate stage — see the strafe roll in `update`. */
+    this._strafeRollAim = 0;
     this.turnRoll = 0;
     this.slideRoll = 0;
     this.airRoll = 0;
@@ -105,6 +107,7 @@ export class CameraRig {
     this.punch.reset(0);
     this.trauma = 0;
     this.strafeRoll = 0;
+    this._strafeRollAim = 0;
     this.turnRoll = 0;
     this.slideRoll = 0;
     this.slideBlend = 0;
@@ -210,8 +213,17 @@ export class CameraRig {
 
     // ---- rolls -----------------------------------------------------------
     const R = C.roll;
-    const strafeTarget = -m.cmd.moveX * R.strafe * (m.grounded ? 1 : 0.45) * (1 - 0.6 * ads);
-    this.strafeRoll = approach(this.strafeRoll, strafeTarget, R.tau, dt);
+    /**
+     * `cmd.moveX` is a key, so it steps from -1 to +1 the instant you reverse a
+     * strafe. One `approach` makes the roll continuous but leaves its VELOCITY
+     * discontinuous — the bank whips through zero and the kink is visible, most
+     * of all through the sights, where the whole view is a magnified sight
+     * picture. Two stages in series start at zero velocity, so the reversal is a
+     * curve rather than a corner. That kink was the aimed strafe jitter.
+     */
+    const strafeTarget = -m.cmd.moveX * R.strafe * (m.grounded ? 1 : 0.45) * (1 - 0.75 * ads);
+    this._strafeRollAim = approach(this._strafeRollAim, strafeTarget, R.tau * 0.75, dt);
+    this.strafeRoll = approach(this.strafeRoll, this._strafeRollAim, R.tau, dt);
     const turnTarget = clamp(m.yawRate * R.yawRate, -R.yawRateMax, R.yawRateMax) * (1 - 0.5 * ads);
     this.turnRoll = approach(this.turnRoll, turnTarget, R.tau * 1.4, dt);
     const slideRollTarget = m.sliding ? -this.slideSide * R.slide : 0;

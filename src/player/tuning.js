@@ -29,7 +29,7 @@ export const STANCE = {
     name: 'stand',
     height: UNITS.playerHeight, // 1.78
     eye: UNITS.playerHeight - UNITS.eyeOffset, // 1.66
-    speed: 4.57,
+    speed: 4.0,
     stepHeight: 0.42,
     strideLength: 1.48,
   },
@@ -37,7 +37,7 @@ export const STANCE = {
     name: 'crouch',
     height: UNITS.playerCrouchHeight, // 1.12
     eye: UNITS.playerCrouchHeight - 0.1, // 1.02
-    speed: 2.44,
+    speed: 2.1,
     stepHeight: 0.3,
     strideLength: 1.05,
   },
@@ -52,26 +52,34 @@ export const STANCE = {
 };
 
 export const MOVE = {
-  sprintSpeed: 7.01,
-  tacSprintSpeed: 8.38,
+  sprintSpeed: 6.1,
+  tacSprintSpeed: 7.3,
 
   /** Directional scaling — you are slower sideways and slower still backwards. */
-  strafeScale: 0.92,
-  backScale: 0.8,
+  strafeScale: 0.82,
+  backScale: 0.72,
   /** ADS movement penalty (CoD: ~45 % of base, a touch more forgiving here). */
-  adsScale: 0.5,
+  adsScale: 0.44,
 
   /**
-   * Ground response. 92 m/s^2 reaches base run speed in 50 ms — effectively
-   * instant, which is what makes CoD feel "tight". Deceleration is deliberately
-   * lower so there is a short slide-off tail instead of a dead stop.
+   * Ground response. WEIGHT LIVES HERE, not in the top speed.
+   *
+   * The original 92 m/s^2 reached full speed in 50 ms — the whole reason CoD
+   * movement feels weightless is that the body has no apparent mass, it is just
+   * a velocity that follows the keys. 38 takes ~105 ms to spin up and the same
+   * to wind down, which is roughly a real stride's worth of commitment: you
+   * feel the start, and a direction change costs you something.
+   *
+   * Deceleration stays below acceleration so there is a slide-off tail rather
+   * than a dead stop, and stopDecel is the only fast number left — releasing
+   * every key should still plant you inside a step.
    */
-  groundAccel: 92,
-  groundDecel: 52,
+  groundAccel: 38,
+  groundDecel: 30,
   /** Extra braking when the stick is released entirely. */
-  stopDecel: 30,
+  stopDecel: 26,
   /** Air control: a quarter of ground authority, and it cannot add speed. */
-  airAccelScale: 0.25,
+  airAccelScale: 0.18,
   airSpeedCap: 3.4,
   terminalSpeed: 55,
 
@@ -89,9 +97,11 @@ export const MOVE = {
   sprintStartDelay: 0.05,
 
   slide: {
-    entrySpeed: 8.84,
+    // Scaled with the slower sprint: minEntry must stay above sprintSpeed (6.1)
+    // or entering a slide reads as braking instead of a burst.
+    entrySpeed: 7.7,
     /** Never slower than this on entry, so a slide always feels like a burst. */
-    minEntry: 6.2,
+    minEntry: 6.9,
     /** Speed at which the slide gives up and becomes a crouch walk. */
     exitSpeed: 2.95,
     duration: 0.9,
@@ -137,10 +147,20 @@ export const MOVE = {
 
   lean: {
     /** Lateral camera travel at full lean — enough to clear a doorframe. */
-    offset: 0.34,
-    roll: 13 * DEG,
-    drop: 0.035,
-    rate: 0.085, // tau
+    offset: 0.46,
+    roll: 19 * DEG,
+    /**
+     * The head drops as the torso tips: a lean that only translates sideways
+     * reads as the camera sliding on rails. Scaled with the bigger angle.
+     */
+    drop: 0.055,
+    /**
+     * tau, 0.085 -> 0.19. At 0.085 the lean snapped to full in about two frames,
+     * which is why it felt like a toggle rather than a movement. 0.19 is a body
+     * shifting its weight onto one leg — you can see it happen, and you can stop
+     * it halfway.
+     */
+    rate: 0.19,
     probeRadius: 0.17,
   },
 
@@ -160,22 +180,30 @@ export const CAMERA = {
    * nausea rather than weight.
    */
   bob: {
-    ampX: 0.0165,
-    ampY: 0.0115,
-    ampZ: 0.006,
-    roll: 0.42 * DEG,
-    pitch: 0.16 * DEG,
+    ampX: 0.023,
+    ampY: 0.017,
+    ampZ: 0.0085,
+    roll: 0.62 * DEG,
+    pitch: 0.24 * DEG,
     speedExp: 0.85,
     speedCap: 1.55,
     adsScale: 0.22,
     airFade: 0.11, // tau to fade bob out in the air
   },
 
-  /** Per-footstep vertical micro-shift, on top of the bob. */
+  /**
+   * Per-footstep vertical micro-shift, on top of the bob.
+   *
+   * This is the "you can feel the steps" channel: a discrete impulse per foot
+   * plant, not a continuous wave. Raised from 0.085 and given a lower damping so
+   * each plant is a distinct event you could count with your eyes shut. Keep the
+   * frequency where it is — take it much lower and it stops reading as an impact
+   * and starts reading as a swaying deck.
+   */
   step: {
-    impulse: 0.085, // m/s injected into the landing spring
+    impulse: 0.16, // m/s injected into the landing spring
     freq: 5.4,
-    damping: 0.62,
+    damping: 0.52,
     sprintScale: 1.7,
   },
 
@@ -295,7 +323,7 @@ export const FOOTSTEP = {
   /** Surface probe length below the foot. */
   probe: 0.9,
   /** A step is only "running" (louder, dustier) above this speed. */
-  runSpeed: 5.4,
+  runSpeed: 4.7,
   /** Landing suppresses the next step so you do not get a double transient. */
   landHold: 0.12,
 };
