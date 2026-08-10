@@ -245,9 +245,13 @@ export class Viewmodel {
     this.dotRim.renderOrder = 20;
     this.dotRing.renderOrder = 20;
     this.dotCore.renderOrder = 21;
-    this.reticle.add(this.dotHalo);
+    // Centre dot only. The 65 MOA segmented ring and the bloom halo are what a
+    // real tube sight ships, but on screen they are twelve extra bright marks
+    // around the exact spot you are trying to read, so they come off. The dark
+    // keyline stays: without it the dot vanishes against a blown-out sky.
+    this.dotHalo.visible = false;
+    this.dotRing.visible = false;
     this.reticle.add(this.dotRim);
-    this.reticle.add(this.dotRing);
     this.reticle.add(this.dotCore);
     for (const m of [this.dotCore, this.dotHalo, this.dotRim, this.dotRing]) {
       m.frustumCulled = false;
@@ -612,7 +616,7 @@ export class Viewmodel {
      * flips up.
      */
     const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1);
-    const upScale = lerp(1, 0.28, ads) * (first ? 1.18 : 1);
+    const upScale = lerp(1, 0.1, ads) * (first ? 1.18 : 1);
     const jitter = 0.86 + this.rng.float() * 0.3;
     this.recPos.f = r.freq;
     this.recPos.z = r.damping;
@@ -627,8 +631,17 @@ export class Viewmodel {
       r.kickUp * upScale * jitter * wp,
       r.kickBack * backScale * jitter * wp
     );
+    /**
+     * The rotational PITCH kick is what makes the gun shake vertically, and it
+     * is driven off the same `r.pitch` as the camera climb — so raising the real
+     * recoil doubled the visual shake as a side effect. Aimed fire needs the two
+     * decoupled: with the eye on the optic the sight picture has to stay on the
+     * target, so the muzzle flip is nearly removed and the kick is carried by
+     * the rearward travel instead.
+     */
+    const pitchScale = lerp(1, 0.12, ads) * (first ? 1.18 : 1);
     this.recRot.kick(
-      (pitch * 5.5 + r.pitch * 1.4) * scale * jitter * wr,
+      (pitch * 5.5 + r.pitch * 1.4) * pitchScale * jitter * wr,
       (-yaw * 4.5 - this.rng.signed() * r.yaw * 0.8) * scale * wr,
       (this.rng.signed() * 0.4 + 0.6) * r.roll * scale * wr
     );
@@ -1055,7 +1068,9 @@ export class Viewmodel {
      * with the halo at 1.6x and the segmented ring at 3.2x, both scaled off the
      * same number so the reticle never changes shape.
      */
-    const coreR = s * lerp(0.00385, 0.00655, ads);
+    // Halved from 0.00385/0.00655: with the ring and halo gone the dot is the
+    // only mark on screen, so it can be precise instead of legible-at-a-glance.
+    const coreR = s * lerp(0.00205, 0.0033, ads);
     this.dotCore.scale.setScalar(coreR);
     this.dotRim.scale.setScalar(coreR);
     this.dotHalo.scale.setScalar(coreR);
