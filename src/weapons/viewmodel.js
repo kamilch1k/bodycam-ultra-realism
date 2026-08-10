@@ -637,7 +637,8 @@ export class Viewmodel {
     const upScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
     const pitchScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
     const lateralScale = lerp(1, 0.08, ads);
-    const rollScale = lerp(1, 0.12, ads);
+    // Hipfire cant was overdone: the gun visibly tipped on every shot.
+    const rollScale = lerp(0.42, 0.12, ads);
     const yawScale = lerp(1, 0.25, ads);
     const driftScale = lerp(1, 0.12, ads);
     // 1.0 = no shot-to-shot variation.
@@ -717,8 +718,10 @@ export class Viewmodel {
       const dy = wrapPi(yaw - this._prevYaw) / dt;
       const dp = wrapPi(pitch - this._prevPitch) / dt;
       // Low-pass, then clamp: a teleport must not throw the gun off screen.
-      this._angVel.yaw = damp(this._angVel.yaw, clamp(dy, -9, 9), 18, dt);
-      this._angVel.pitch = damp(this._angVel.pitch, clamp(dp, -9, 9), 18, dt);
+      // 18 -> 11: a slower low-pass on a noisy per-frame estimate. The lag
+      // layer is meant to trail the camera, not to track its jitter.
+      this._angVel.yaw = damp(this._angVel.yaw, clamp(dy, -9, 9), 11, dt);
+      this._angVel.pitch = damp(this._angVel.pitch, clamp(dp, -9, 9), 11, dt);
     } else {
       this._angVel.yaw = 0;
       this._angVel.pitch = 0;
@@ -819,7 +822,13 @@ export class Viewmodel {
     ry += Math.sin(bp + 0.6) * 0.019 * bobAmt;
 
     /* -------- weapon lag ---------------------------------------------- */
-    const lagScale = lerp(1, 0.42, ads);
+    /**
+     * Lag is halved again when aimed. It is driven by a per-frame angular
+     * velocity, and a mouse delivers whole-pixel deltas, so at high frame rates
+     * that signal is noisy shot to shot. Hipfire hides it; through the sights
+     * the magnified picture turns it into a visible jitter while turning.
+     */
+    const lagScale = lerp(1, 0.2, ads);
     const av = this._angVel;
     this.lag.step(
       dt,

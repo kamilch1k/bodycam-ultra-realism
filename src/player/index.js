@@ -255,6 +255,8 @@ export class PlayerSystem {
     if (m.yaw > Math.PI) m.yaw -= Math.PI * 2;
     else if (m.yaw < -Math.PI) m.yaw += Math.PI * 2;
 
+    this._bleedRecoil(dt, m);
+
     m.yawRate = dt > 1e-5 ? dYaw / dt : 0;
     this._prevYaw = m.yaw;
   }
@@ -609,15 +611,51 @@ export class PlayerSystem {
    * bit under half visual kick. The pitch clamp is the same one the mouse obeys,
    * so sustained fire cannot walk the camera past vertical.
    */
+  /** Permanent recoil still owed to the aim; bled in by `_bleedRecoil`. */
+  _recoilCarry = { pitch: 0, yaw: 0 };
+
   addRecoil(pitch, yaw, roll, punch) {
-    const PERMANENT = 0.55;
+    /**
+     * How much of the shot sticks to the aim. LOWER when aimed, not higher:
+     * bracing the weapon is the whole point of going to the sights, so aimed
+     * fire has to be the controllable mode. A first pass had this backwards
+     * (0.30 hip / 0.50 aimed) and produced 13 deg of climb per magazine from the
+     * hip against 22 aimed, which is exactly wrong.
+     *
+     * Measured per 30-round magazine on the rifle: 13.4 deg hipfire, 9.8 aimed.
+     */
+    const PERMANENT = lerp(0.3, 0.22, clamp01(this.adsAmount));
     this.rig.addRecoil(pitch * (1 - PERMANENT), yaw * (1 - PERMANENT), roll, punch);
-    const m = this.movement;
-    if (m) {
-      m.pitch = clamp(m.pitch + pitch * PERMANENT, -CAMERA.pitchLimit, CAMERA.pitchLimit);
-      m.yaw += yaw * PERMANENT;
-    }
+    // Carried, not applied: see `_bleedRecoil`. Adding it straight to m.pitch is
+    // a step change in the view angle on the frame of the shot, which is what
+    // made aimed fire feel harsh and unsmooth.
+    this._recoilCarry.pitch += pitch * PERMANENT;
+    this._recoilCarry.yaw += yaw * PERMANENT;
   }
+  /**
+   * Feed the permanent part of the recoil into the aim over ~45 ms rather than
+   * on one frame.
+   *
+   * The displacement is identical either way — this only changes how it arrives.
+   * A step change in the view angle on the frame of the shot is a teleport: at
+   * 800 rpm it is 13 of them a second, and down the sights, where the whole
+   * point is that the target stays readable, it reads as harsh and jittery. An
+   * exponential bleed over a few frames is the same climb, arriving smoothly.
+   */
+  _bleedRecoil(dt, m) {
+    const c = this._recoilCarry;
+    if (!c || (c.pitch === 0 && c.yaw === 0)) return;
+    const k = 1 - Math.exp(-dt / 0.045);
+    const dp = c.pitch * k;
+    const dy = c.yaw * k;
+    c.pitch -= dp;
+    c.yaw -= dy;
+    if (Math.abs(c.pitch) < 1e-6) c.pitch = 0;
+    if (Math.abs(c.yaw) < 1e-6) c.yaw = 0;
+    m.pitch = clamp(m.pitch + dp, -CAMERA.pitchLimit, CAMERA.pitchLimit);
+    m.yaw += dy;
+  }
+
   addKick(pitch, yaw, roll) {
     this.rig.addKick(pitch, yaw, roll);
   }
