@@ -23,6 +23,11 @@ export const MAPS = [
     blurb: 'Full production map — buildings, interiors, props. Slow to load.',
   },
   {
+    id: 'swat',
+    name: 'Shoot House',
+    blurb: 'Close-quarters kill house — six rooms off one corridor. Loads fast.',
+  },
+  {
     id: 'box',
     name: 'Whitebox Arena',
     blurb: 'Greybox testbed. Loads about twice as fast.',

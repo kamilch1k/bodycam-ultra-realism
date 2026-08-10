@@ -178,6 +178,9 @@ export class Agent {
     this.alive = true;
     this.state = STATE.IDLE;
     this.stateTime = 0;
+    /** Vocal-tract offset so a squad does not sound like one man six times. */
+    this.voiceOffset = ai.rng.range(-1, 1);
+    this._lastBark = -99;
     this.squad = opts.squad ?? null;
     this.team = opts.team ?? 1;
 
@@ -355,9 +358,50 @@ export class Agent {
 
   _setState(s) {
     if (this.state === s) return;
+    const was = this.state;
     this.state = s;
     this.stateTime = 0;
     if (s !== STATE.COMBAT && s !== STATE.SUPPRESSED) this.peeking = false;
+
+    /**
+     * CALL IT OUT.
+     *
+     * The voice system (src/audio/vox.js) has been complete and wired into
+     * `audio` the whole time — eleven formant-synthesised English barks, an
+     * `ai:bark` listener, spatialisation, the lot — and nothing ever emitted the
+     * event, so every enemy in the game fought in total silence. These are the
+     * transitions worth hearing, and they are worth hearing for a reason beyond
+     * flavour: a bark is the only warning a player gets that someone has seen
+     * them, is moving on them, or is about to come round a corner. In a six-room
+     * kill house with no line of sight that is most of the information there is.
+     */
+    if (s === STATE.COMBAT && (was === STATE.IDLE || was === STATE.PATROL || was === STATE.ALERT)) {
+      this._bark('spot', 1);
+    } else if (s === STATE.FLANK) this._bark('flank', 0.7);
+    else if (s === STATE.SUPPRESSED) this._bark('suppress', 0.5);
+    else if (s === STATE.RETREAT) this._bark('hurt', 0.8);
+  }
+
+  /**
+   * Emit a bark, rate-limited per actor.
+   *
+   * Six agents changing state in the same second is six overlapping shouts from
+   * roughly the same direction, which reads as noise rather than as people. One
+   * every 2.2 s per actor, and `chance` thins the less important ones so the
+   * channel stays free for a contact call.
+   */
+  _bark(kind, chance = 1) {
+    if (!this.alive) return;
+    const t = this.ctx.time?.elapsed ?? 0;
+    if (t - (this._lastBark ?? -99) < 2.2) return;
+    if (chance < 1 && this.ai.rng.float() > chance) return;
+    this._lastBark = t;
+    this.ctx.events.emit('ai:bark', {
+      kind,
+      position: this.position,
+      // Per-actor vocal tract, so the same six men are recognisably six men.
+      voice: this.voiceOffset ?? 0,
+    });
   }
 
   _think(dt) {
@@ -757,6 +801,9 @@ export class Agent {
     if (this.ammo <= 0) {
       this.animator.reload(this.variantName === 'irregular' ? 2.9 : 2.35);
       this.ai.emitReload(this);
+      // Announcing a reload is the single most exploitable thing a soldier says
+      // and every shooter keeps it for exactly that reason.
+      this._bark('reload', 0.75);
       this.ammo = this.magSize;
       return;
     }
@@ -822,9 +869,14 @@ export class Agent {
     if (this.state === STATE.IDLE || this.state === STATE.PATROL) this._setState(STATE.ALERT);
 
     if (this.health <= 0) {
+      // Bypasses the rate limit: a death cry that gets swallowed because the man
+      // shouted "contact" two seconds ago is the one bark you always want.
+      this._lastBark = -99;
+      this._bark('death');
       this.die(point, dir, amount);
       return;
     }
+    this._bark('hurt', 0.45);
     // hit reaction by region, with the side the round came from
     const side = dir ? Math.sign(dir.x * Math.cos(this.yaw) - dir.z * Math.sin(this.yaw)) || 1 : 1;
     const region =

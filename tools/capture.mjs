@@ -87,7 +87,12 @@ page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}\n${e.stack ?? ''
 
 let failed = null;
 try {
-  await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${encodeURIComponent(SHOT)}`, {
+  // --map=/--mode= pass straight through, so any level can be shot without a
+  // dedicated entry in src/dev/shots.js.
+  const level =
+    (args.map ? `&map=${encodeURIComponent(args.map)}` : '') +
+    (args.mode ? `&mode=${encodeURIComponent(args.mode)}` : '');
+  await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${encodeURIComponent(SHOT)}${level}`, {
     waitUntil: 'domcontentloaded',
     timeout: TIMEOUT,
   });

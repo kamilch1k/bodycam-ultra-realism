@@ -3,6 +3,7 @@ import { Assembler } from './builder.js';
 import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { buildGround } from './ground.js';
 import { buildWhitebox } from './whitebox.js';
+import { buildShootHouse } from './shoothouse.js';
 import { buildBuilding, collapseRoof } from './buildings.js';
 import { registerProps } from './props.js';
 import {
@@ -83,6 +84,32 @@ const SPAWNS = [
   [-9.0, -10.2, Math.PI / 2, 'west alley'],
 ];
 
+/**
+ * The shoot house has its own spawns — the street's would put both sides in the
+ * middle of a wall. Two in the courtyard on the assault side, one at the rear
+ * door, and four inside so a garrison starts spread across the building rather
+ * than stacked in one room.
+ */
+const SWAT_SPAWNS = [
+  /**
+   * YAW 0 LOOKS DOWN -Z, not +Z. Measured, because the first pass had it the
+   * other way round and spawned the assault three metres from the compound wall
+   * staring at render of plaster. Courtyard spawns are on the +z side of the
+   * building and therefore all face 0.
+   *
+   * Also kept off the stack-up wall: at [-6, 26] you stand 1 m from a 7 m
+   * barrier and it is the entire frame.
+   */
+  [-11, 27, 0, 'stack point'],
+  [16, 29, 0, 'container'],
+  [14, -24, Math.PI, 'rear door'],
+  [-16, 12, 0, 'west front room'],
+  [16, 12, 0, 'east front room'],
+  [-16, -12, Math.PI, 'west rear room'],
+  [16, -12, Math.PI, 'east rear room'],
+  [0, 15, 0, 'corridor'],
+];
+
 export class WorldSystem {
   static id = 'world';
   static deps = ['materials', 'physics'];
@@ -108,11 +135,17 @@ export class WorldSystem {
     this.A = A;
     A.setTransform(LEVEL_YAW, LEVEL_TX, LEVEL_TZ);
 
-    // `?map=box` swaps the level for a greybox arena: one surface, one box
-    // prototype, no props, no dressing, no practicals. Everything skipped here
-    // is load time — see whitebox.js.
-    const box = ctx.config.map === 'box';
-    if (box) buildWhitebox(A);
+    /**
+     * `?map=box` and `?map=swat` are both GREYBOX levels: one surface, one box
+     * prototype, no props, no dressing, no practicals. Everything skipped below
+     * is load time — the street map's ~25 s is almost entirely shader
+     * compilation for its procedural surfaces, and neither of these needs any
+     * of it. See whitebox.js and shoothouse.js.
+     */
+    const mapId = ctx.config.map;
+    const box = mapId === 'box' || mapId === 'swat';
+    if (mapId === 'box') buildWhitebox(A);
+    else if (mapId === 'swat') buildShootHouse(A);
 
     // 1. prototypes first: the level references them by id while it builds
     if (!box) {
@@ -157,7 +190,7 @@ export class WorldSystem {
     // -------------------------------------------------------------- queries --
     this._v = new THREE.Vector3();
     this._inv = new THREE.Matrix4().copy(A.xform).invert();
-    this.spawnPoints = SPAWNS.map(([x, z, yaw, tag]) => ({
+    this.spawnPoints = (mapId === 'swat' ? SWAT_SPAWNS : SPAWNS).map(([x, z, yaw, tag]) => ({
       position: A.toWorld(x, 0, z),
       yaw: yaw + LEVEL_YAW,
       tag,
