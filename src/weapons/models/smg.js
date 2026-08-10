@@ -188,7 +188,12 @@ export function buildSmg() {
     braces: 2,
   });
   addRail(body, 'alu', hgZ1 + 0.004, hgZ0 - 0.002, railTop);
-  addForeGrip(body, 'polymer', 'rubber', { y: bore - hgR - 0.004, z: -0.208, angle: 0.2, len: 0.058 });
+  const foreGrip = addForeGrip(body, 'polymer', 'rubber', {
+    y: bore - hgR - 0.004,
+    z: -0.208,
+    angle: 0.2,
+    len: 0.058,
+  });
   addQdSocket(body, 'alu', 'steel', -hgR + 0.001, bore - 0.006, hgZ0 - 0.022, 'x', 0.0045);
 
   /* ---- folding skeleton stock ---------------------------------------- */
@@ -339,6 +344,8 @@ export function buildSmg() {
         finger: [0.45, 0.05, -0.89],
         back: [-0.88, -0.05, -0.45],
       },
+      /** Cylinder for the build-time fingertip contact solve — see foreGrip. */
+      foregrip: foreGrip,
       magSeat: { pos: [0, bore - 0.02, magZ], rot: [magTilt, 0, 0] },
       magDrop: [0, -0.4, 0.02],
       chargeRest: { pos: [-rRec + 0.0028, bore + rRec - 0.007, -0.06], rot: [0, 0, 0] },

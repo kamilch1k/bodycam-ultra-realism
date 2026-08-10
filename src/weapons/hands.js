@@ -68,10 +68,20 @@ function segment(len, r0, r1) {
   return g;
 }
 
-/** Padded segment cover on the dorsal side (glove reinforcement). */
+/**
+ * Padded segment cover on the dorsal side (glove reinforcement).
+ *
+ * It has to sit ON the dorsal surface, not above it. The finger cross-section
+ * is scaled 0.88 in Y, so the shell is at 0.88 r; a pad 0.55 r thick centred at
+ * 0.78 r reached 1.06 r and its edges — 0.78 r out either side of a shell that
+ * is only 1.0 r wide — floated clear of the finger entirely. Combined with the
+ * gap that used to open at every joint, each finger read as a row of loose
+ * tiles rather than a padded glove. Now it is thinner, narrower and longer, and
+ * its top lands within a tenth of a millimetre of the shell.
+ */
 function segmentPad(len, r) {
-  const g = blob(r * 1.55, r * 0.55, len * 0.78, r * 0.25, 2);
-  g.translate(0, r * 0.78, -len * 0.46);
+  const g = blob(r * 1.42, r * 0.42, len * 0.9, r * 0.2, 2);
+  g.translate(0, r * 0.68, -len * 0.48);
   return g;
 }
 
@@ -140,6 +150,29 @@ function buildFinger(materials, spec) {
     const next = new THREE.Object3D();
     next.position.z = -lengths[i];
     j.add(next);
+    /**
+     * KNUCKLE BALL, centred exactly on the pivot.
+     *
+     * This is what closes the gaps around the glove. A segment's lathe tapers
+     * to 0.35 r at its distal end and the next segment starts at 0.86 r, and
+     * the two are only coincident while the finger is straight. Curl the joint
+     * — which is the entire point of a hand wrapped around a handguard — and
+     * the cone tip swings away from the next segment's base, opening a wedge
+     * of daylight at every joint. It is most obvious on the support hand,
+     * silhouetted against a bright wall.
+     *
+     * A ball on the pivot cannot open a gap at ANY bend angle, because every
+     * point of its surface is equidistant from the axis of rotation. It is also
+     * anatomically what is there: a knuckle is a lump.
+     */
+    if (i < 2) {
+      const rj = radii[i + 1] * 0.99;
+      const ball = blob(rj * 2, rj * 1.76, rj * 2, rj * 0.95, 3);
+      const knuckle = new THREE.Mesh(ball, materials.glove);
+      knuckle.castShadow = false;
+      knuckle.receiveShadow = true;
+      next.add(knuckle);
+    }
     parent = next;
     joints.push(j);
   }

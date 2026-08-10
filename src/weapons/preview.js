@@ -33,7 +33,8 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(1);
 renderer.setSize(innerWidth, innerHeight, false);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+// ?exp=4 to inspect geometry on a near-black weapon without touching materials.
+renderer.toneMappingExposure = Number(params.get('exp') ?? 1.15);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
@@ -205,6 +206,14 @@ switch (VIEW) {
     break;
   case 'hands':
     frame([0, -0.03, -0.12], [0.6, 0.15, 1.0], 0.22, 40);
+    break;
+  // The support hand on the handguard, close enough to judge whether the
+  // fingers actually close on the tube and whether the knuckles hold together.
+  case 'support':
+    frame([0, bore - 0.03, -0.28], [0.35, -0.5, 1.0], 0.1, 40);
+    break;
+  case 'support2':
+    frame([0, bore - 0.03, -0.28], [-1.0, 0.15, 0.45], 0.1, 40);
     break;
   case 'reload':
   case 'inspect':

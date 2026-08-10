@@ -487,7 +487,18 @@ export class Viewmodel {
    * so a mask of 0.9 is the 0.55 multiply asked for.
    */
   _fitSupportHand(w) {
-    const hg = w.model.nodes.handguard;
+    /**
+     * Either a handguard tube or a vertical foregrip post — whichever the
+     * weapon actually presents to the support hand.
+     *
+     * The rifle and the SMG both moved to a foregrip and neither declared a
+     * cylinder afterwards, so this returned early and the hand kept the
+     * authored `clamp` curls. Those are solved for a 47 mm handguard; the post
+     * is 29 mm across. Every finger therefore closed about 10 mm short of the
+     * thing it was holding and the fist never shut, which is the daylight
+     * visible all around the glove.
+     */
+    const hg = w.model.nodes.handguard ?? w.model.nodes.foregrip;
     const gL = w.gripL;
     if (!hg || !gL || w.id === 'pistol') return;
     this._handPosL.fromArray(gL.pos);
@@ -503,11 +514,15 @@ export class Viewmodel {
       { clearance: 0.001, poseName }
     );
     w.lhandPose = poseName;
-    // Only keep contacts that actually landed on the handguard's own extent —
-    // a fingertip that overshot past the end cap must not paint AO on the barrel.
-    const z0 = Math.max(hg.z0, hg.z1);
-    const z1 = Math.min(hg.z0, hg.z1);
-    const kept = contacts.filter((p) => p.z <= z0 + 0.012 && p.z >= z1 - 0.012);
+    // Only keep contacts that actually landed on the part's own extent — a
+    // fingertip that overshot past the end cap must not paint AO on the barrel.
+    // A handguard is bounded in Z, a foregrip post in Y.
+    const along = hg.z0 !== undefined ? 'z' : 'y';
+    const a0 = along === 'z' ? hg.z0 : hg.y0;
+    const a1 = along === 'z' ? hg.z1 : hg.y1;
+    const hi = Math.max(a0, a1);
+    const lo = Math.min(a0, a1);
+    const kept = contacts.filter((p) => p[along] <= hi + 0.012 && p[along] >= lo - 0.012);
     this.armL.bakeContactAO(kept, 0.012, 0.7);
     this._bakeContactAOOnWeapon(w, kept, 0.012, 0.9);
     this.armL.setPose(poseName);

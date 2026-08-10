@@ -214,7 +214,12 @@ export function buildRifle() {
    * the wrist stays near neutral. Giving the carbine the same post lets it reuse
    * the same solution instead of fighting the geometry.
    */
-  addForeGrip(body, 'polymer', 'rubber', { y: bore - hgR - 0.004, z: handZ, angle: 0.22, len: 0.062 });
+  const foreGrip = addForeGrip(body, 'polymer', 'rubber', {
+    y: bore - hgR - 0.004,
+    z: handZ,
+    angle: 0.22,
+    len: 0.062,
+  });
   addQdSocket(body, 'alu', 'steel', -hgR + 0.001, bore - 0.008, hgZ0 - 0.035, 'x', 0.005);
   addSlingLoop(body, 'steel', 0, bore - hgR - 0.0015, hgZ1 + 0.03, 0.0075, {
     rx: Math.PI / 2,
@@ -471,6 +476,8 @@ export function buildRifle() {
         finger: [0.45, 0.05, -0.89],
         back: [-0.88, -0.05, -0.45],
       },
+      /** Cylinder for the build-time fingertip contact solve — see foreGrip. */
+      foregrip: foreGrip,
       magSeat: { pos: [0, 0.061, magZ], rot: [magTilt, 0, 0] },
       magDrop: [0, -0.4, 0.02],
       chargeRest: { pos: [0, bore + rUpper - 0.0075, zUpperRear - 0.024], rot: [0, 0, 0] },

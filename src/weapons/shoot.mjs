@@ -76,6 +76,7 @@ try {
     `&w=${encodeURIComponent(WEAPON)}` +
     `&grab=${FRAMES}` +
     (args.t ? `&t=${encodeURIComponent(args.t)}` : '') +
+    (args.exp ? `&exp=${encodeURIComponent(args.exp)}` : '') +
     (args.arms ? `&arms=${args.arms}` : '');
   await page.goto(`http://127.0.0.1:${PORT}/src/weapons/preview.html?view=${VIEW}${extra}`, {
     waitUntil: 'domcontentloaded',

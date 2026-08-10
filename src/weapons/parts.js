@@ -1876,6 +1876,35 @@ export function addForeGrip(asm, matPoly, matRubber, o) {
   const grips = mergeAll(gripParts);
   asm.add(grips, matRubber, { y: o.y, z: o.z, rx: o.angle ?? 0.25 });
   grips.dispose();
+
+  /**
+   * The post as a CYLINDER, so the support hand can be fitted to it.
+   *
+   * The hand's authored `clamp` curls were solved against a 47 mm handguard
+   * tube. This post is 26 mm across. A hand curled for a 23.5 mm radius closing
+   * on a 14 mm one leaves every finger about 10 mm clear of what it is holding,
+   * which is the daylight visible around the glove — the fingers were wrapping
+   * a tube that is not there any more.
+   *
+   * The taper is real (26 -> 23 mm over the length) but a cylinder is what the
+   * contact solve takes, so this is the mean radius; the per-fingertip search
+   * absorbs the millimetre.
+   *
+   * Axis: the blob column runs down -Y with an 8 mm forward rake over `len`,
+   * then the whole part is rotated `angle` about X.
+   */
+  const rake = 0.008 / len;
+  const c = Math.cos(o.angle ?? 0.25);
+  const s = Math.sin(o.angle ?? 0.25);
+  const n = Math.hypot(1, rake);
+  return {
+    axis: [0, o.y, o.z],
+    // Rx * (0, -1, rake) / |(0, -1, rake)|
+    dir: [0, (-c - rake * s) / n, (-s + rake * c) / n],
+    r: 0.0145,
+    y0: o.y,
+    y1: o.y - len,
+  };
 }
 
 /**
