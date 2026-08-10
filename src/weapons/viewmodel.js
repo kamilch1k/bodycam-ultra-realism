@@ -268,6 +268,8 @@ export class Viewmodel {
     this.sprintT = 0;
     this.lowReadyT = 0;
     this.bobPhase = 0;
+    /** Damped bob amplitude — see the movement bob in `update`. */
+    this.bobWeight = 0;
     this.stepT = 0;
     this.noiseT = 0;
     this.triggerT = 0;
@@ -811,8 +813,26 @@ export class Viewmodel {
 
     /* -------- movement bob --------------------------------------------- */
     const speed = s.speed ?? 0;
-    const bobAmt =
-      def.bobScale * clamp01(speed / 4.2) * lerp(1, 0.28, ads) * (s.airborne ? 0.25 : 1);
+    /**
+     * The AMPLITUDE IS DAMPED, not taken from the instantaneous speed.
+     *
+     * This was the jitter when reversing a strafe while aimed, and it was not
+     * the recoil, the lag layer or the camera bank. Reversing direction takes
+     * the ground speed down to ~0 and back inside 75 ms; an amplitude read
+     * straight off that speed collapses and recovers with it, which put a
+     * V-shaped notch of 1.4 mm and 0.16 deg into the weapon's pose with a hard
+     * corner at the bottom. Small, but through an optic it is a visible twitch,
+     * and it fires every time you change direction.
+     *
+     * The camera's own bob has always damped its weight (CAMERA.bob.airFade);
+     * this one simply never did. tau ~0.125 s: the bob now fades out and back
+     * across the reversal instead of snapping with the speed trace. It also
+     * fixes the same notch on every stop, start and sprint transition.
+     */
+    const bobTarget =
+      def.bobScale * clamp01(speed / 4.0) * lerp(1, 0.28, ads) * (s.airborne ? 0.25 : 1);
+    this.bobWeight = damp(this.bobWeight, bobTarget, 8, dt);
+    const bobAmt = this.bobWeight;
     if (speed > 0.05) {
       // Stride frequency scales with speed; sprint takes longer strides.
       this.bobPhase += dt * (3.1 + speed * 0.72) * (s.sprint ? 1.05 : 1);
