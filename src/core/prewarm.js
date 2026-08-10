@@ -97,6 +97,27 @@ const SELF_WARMING = new Set(['fx']);
  */
 const RENDER_SHADOW_WARM = false;
 
+/**
+ * NOT HERE: an incremental pre-warm that runs after the game is interactive.
+ *
+ * It was built and measured, and it does not fix the stutter, because the
+ * stutter is not a shader compile. Instrumenting the worst frame of a
+ * 1200-frame camera sweep on the street map:
+ *
+ *   frame 239, 801 ms, +2 programs, +6 TEXTURES, +6 GEOMETRIES, at t=1.8 s
+ *
+ * Six geometries and six textures being CONSTRUCTED on one frame, 1.8 seconds
+ * into play, is lazy resource creation by a subsystem on first use — not
+ * translation of a program that already exists. Warming programs in the
+ * background moved nothing: worst frame 823 ms before, 804-1035 ms after, while
+ * costing ~20 s of driver work and ~15 extra programs the game never asks for.
+ *
+ * The next step is to find the allocator, not to compile harder. Prime suspects
+ * are `fx` (its self-warm is documented to land around the first shot) and `ai`
+ * (first-use variant geometry and ground-shadow targets). Whoever it is should
+ * build those resources during init like `world` and `ai` already do for nav.
+ */
+
 export async function prewarm(engine, { onProgress = () => {}, transients = false, drawFrames = false } = {}) {
   const t0 = performance.now();
   const render = engine.ctx.peek('render');

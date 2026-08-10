@@ -135,6 +135,7 @@ window.__PREWARM__ = warmup;
 engine.start();
 loading?.done();
 
+
 // Capture harness handshake: only flag ready once a frame has actually landed.
 //
 // BOOT_FRAMES is deliberately a frame COUNT, not a rAF race. In lockstep mode the

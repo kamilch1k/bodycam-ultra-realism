@@ -15,6 +15,7 @@ import {
   addRollmark,
   addQdSocket,
   addSlingLoop,
+  addForeGrip,
   addPin,
   addScrew,
   buildMagazine,
@@ -203,6 +204,17 @@ export function buildRifle() {
   // through them — but the hand now grips UNDER the handguard (see gripL), so the
   // split left a 138 mm bare gap in the middle of the deck for no reason.
   addRail(body, 'alu', hgZ1 + 0.004, hgZ0 - 0.002, railTop);
+  /**
+   * VERTICAL FOREGRIP — the fix for the support hand, not a styling choice.
+   *
+   * A hand clamped across a 54 mm round handguard has to cock the wrist ~47 deg,
+   * and no arrangement of shoulder, elbow or hand roll gets below that (2942
+   * placements swept). The SMG's support hand reads correctly for one reason: it
+   * is on a vertical post, so the metacarpals run FORWARD along the weapon and
+   * the wrist stays near neutral. Giving the carbine the same post lets it reuse
+   * the same solution instead of fighting the geometry.
+   */
+  addForeGrip(body, 'polymer', 'rubber', { y: bore - hgR - 0.004, z: handZ, angle: 0.22, len: 0.062 });
   addQdSocket(body, 'alu', 'steel', -hgR + 0.001, bore - 0.008, hgZ0 - 0.035, 'x', 0.005);
   addSlingLoop(body, 'steel', 0, bore - hgR - 0.0015, hgZ1 + 0.03, 0.0075, {
     rx: Math.PI / 2,
@@ -446,45 +458,18 @@ export function buildRifle() {
        * uses less curl, so the contact is preserved.
        */
       /**
-       * DO NOT ROLL THIS AROUND THE TUBE TO FLATTEN THE WRIST.
+       * Support hand on the vertical foregrip, same basis as the SMG's: the
+       * metacarpals run forward along the weapon and the palm faces inboard, so
+       * the wrist is near neutral instead of cocked across a tube.
        *
-       * The wrist sits at ~47 deg between the forearm axis and the hand's
-       * metacarpal axis, and that is the floor for this pose: 2942 shoulder and
-       * elbow placements were swept and none beat 47.7 deg, and twisting the
-       * hand about its own palm normal bottoms out at 46 deg. The one thing that
-       * DOES move the number is the clock angle around the barrel — rolling pos,
-       * finger and back together by +30 deg takes the wrist to 24.8 deg with
-       * reach unchanged.
-       *
-       * It was tried, and it looks worse, which is why the measurement is
-       * recorded here rather than applied. Rolling the wrist target does not
-       * roll the finger CURLS with it: `fitToCylinder` only searches each distal
-       * joint, so with the hand moved a third of the way round the tube the
-       * fingers close on air below the handguard and the grip reads as a hand
-       * holding nothing. A flatter wrist on a hand that is not touching the gun
-       * is not an improvement.
-       *
-       * Making the roll work needs the `clamp` pose curls re-authored for the new
-       * clock angle, not a different vector here.
+       * Offsets are taken from the post, not from the bore: wrist 56 mm outboard,
+       * 30 mm down the post and 55 mm behind it, which is the relationship the
+       * SMG uses and the one that reads correctly on screen.
        */
       gripL: {
-        pos: [-0.1, 0.0734, handZ + 0.0252],
-        finger: [0.8977, -0.3267, -0.2955],
-        back: [-0.2784, -0.7648, 0.581],
-      },
-      /**
-       * The handguard's collision profile, for the build-time fingertip contact
-       * solve (Arm.fitToCylinder). The handguard is genuinely a cylinder on the
-       * bore axis, so the profile is exact — `r` is the outer radius of the
-       * POLYMER panels (the slats stand 3.6 mm off the 23.5 mm chassis), which is
-       * the surface a hand actually touches.
-       */
-      handguard: {
-        axis: [0, bore, 0],
-        dir: [0, 0, 1],
-        r: hgR + 0.0036,
-        z0: hgZ0,
-        z1: hgZ1,
+        pos: [-0.056, bore - hgR - 0.034, handZ + 0.055],
+        finger: [0.45, 0.05, -0.89],
+        back: [-0.88, -0.05, -0.45],
       },
       magSeat: { pos: [0, 0.061, magZ], rot: [magTilt, 0, 0] },
       magDrop: [0, -0.4, 0.02],
