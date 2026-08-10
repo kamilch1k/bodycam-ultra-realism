@@ -590,8 +590,33 @@ export class PlayerSystem {
     this.movement.adsAmount = this.adsAmount;
   }
 
+  /**
+   * PART OF THE RECOIL MOVES YOUR AIM AND STAYS THERE.
+   *
+   * `rig.addRecoil` alone cannot do this and never could: RecoilAxis puts the
+   * whole kick into two DECAYING terms — a spring that returns to zero and a
+   * residual that decays to zero with tau 0.28 s. The camera therefore climbed
+   * and then drifted all the way back on its own, leaving the aim exactly where
+   * it started. That is why the weapon felt like it had no recoil no matter how
+   * far the numbers in defs.js were pushed: there was nothing left to fight.
+   *
+   * So a share of every shot is added to the movement pitch/yaw themselves —
+   * the same fields the mouse writes to — which is what makes the muzzle climb
+   * something the player has to pull down against. The rest stays on the spring,
+   * because the snap-and-settle is what gives the shot its punch.
+   *
+   * PERMANENT = 0.55: a shot's climb is a bit over half aim displacement and a
+   * bit under half visual kick. The pitch clamp is the same one the mouse obeys,
+   * so sustained fire cannot walk the camera past vertical.
+   */
   addRecoil(pitch, yaw, roll, punch) {
-    this.rig.addRecoil(pitch, yaw, roll, punch);
+    const PERMANENT = 0.55;
+    this.rig.addRecoil(pitch * (1 - PERMANENT), yaw * (1 - PERMANENT), roll, punch);
+    const m = this.movement;
+    if (m) {
+      m.pitch = clamp(m.pitch + pitch * PERMANENT, -CAMERA.pitchLimit, CAMERA.pitchLimit);
+      m.yaw += yaw * PERMANENT;
+    }
   }
   addKick(pitch, yaw, roll) {
     this.rig.addKick(pitch, yaw, roll);
