@@ -161,7 +161,12 @@ export class AiSystem {
   _bootNav(ctx) {
     try {
       this._buildNav();
-      if (!this._navPending && (!ctx.config.deterministic || this.forcePopulate)) this.populate();
+      if (
+        !this._navPending &&
+        ctx.config.mode !== 'sandbox' &&
+        (!ctx.config.deterministic || this.forcePopulate)
+      )
+        this.populate();
     } catch (err) {
       this._navPending = true;
       console.warn('[ai] boot nav deferred to the first frame:', err?.message ?? err);
@@ -726,7 +731,12 @@ export class AiSystem {
       // Populate the level for normal play. Capture runs stay empty unless a
       // shot asks for a tableau, so nobody's screenshot gets a stray patrol
       // wandering through it.
-      if (!this._navPending && (!ctx.config.deterministic || this.forcePopulate)) this.populate();
+      if (
+        !this._navPending &&
+        ctx.config.mode !== 'sandbox' &&
+        (!ctx.config.deterministic || this.forcePopulate)
+      )
+        this.populate();
     }
 
     // Per-frame A* budget: see requestPath().

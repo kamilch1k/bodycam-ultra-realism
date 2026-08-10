@@ -15,6 +15,7 @@ import { AudioSystem } from './audio/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
+import { showMainMenu, showLoading, MAPS } from './ui/mainmenu.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -24,11 +25,37 @@ const capture = params.get('capture') === '1';
 // free-run. See the long comment in src/dev/shots.js.
 const lockstep = capture && params.get('lockstep') === '1';
 
+/**
+ * FRONT END FIRST, ENGINE SECOND.
+ *
+ * Nothing 3D is constructed until the player has picked a map. The menu is DOM
+ * and paints on the browser's first frame; the 12-25 s of procedural generation
+ * and shader translation then happens behind a compositor-animated loading
+ * screen instead of behind a black canvas.
+ *
+ * The menu is SKIPPED for `?capture=1` (the pixel harness drives boot itself),
+ * whenever `?map=` names a level outright (so every tool, probe and deep link
+ * still boots straight into the game), and for `?menu=0`.
+ */
+const skipMenu = capture || params.has('map') || params.get('menu') === '0';
+const choice = skipMenu
+  ? { map: params.get('map') ?? 'street', mode: params.get('mode') ?? 'tdm' }
+  : await showMainMenu({ map: params.get('map'), mode: params.get('mode') });
+
+// Put the loading screen up and let it actually paint before anything blocks:
+// engine.init() holds the main thread, so a frame has to land first or the
+// overlay never appears.
+const loading = skipMenu ? null : showLoading(MAPS.find((m) => m.id === choice.map)?.name ?? choice.map);
+if (loading) {
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
+
 const config = createConfig({
   // Keep the launch path friendly to browser portals. Use ?q=ultra when
   // comparing the full desktop-quality renderer.
   quality: params.get('q') ?? 'low',
-  map: params.get('map') ?? 'street',
+  map: choice.map,
+  mode: choice.mode,
   deterministic: capture,
 });
 
@@ -106,6 +133,7 @@ console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
 
 engine.start();
+loading?.done();
 
 // Capture harness handshake: only flag ready once a frame has actually landed.
 //

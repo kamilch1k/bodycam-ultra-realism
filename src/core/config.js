@@ -101,6 +101,8 @@ export const DEFAULTS = {
   quality: 'low',
   /** Level to build: 'street' (the full map) or 'box' (greybox arena). */
   map: 'street',
+  /** 'tdm' garrisons the level with enemy squads; 'sandbox' spawns none. */
+  mode: 'tdm',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,
