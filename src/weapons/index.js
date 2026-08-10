@@ -86,7 +86,28 @@ export class WeaponSystem {
     this._up = new THREE.Vector3();
     this._tmp = new THREE.Vector3();
     this._camDir = new THREE.Vector3();
-    this._firePayload = { weapon: null, origin: new THREE.Vector3(), dir: new THREE.Vector3(), seed: 0 };
+    /**
+     * The player's own muzzle flash is DIMMED AND SHRUNK relative to the profile.
+     *
+     * These three fields were simply absent, so `src/fx/muzzle.js` fell through
+     * to `?? 1` on all of them and drew the flash at full profile size and
+     * radiance — a metre from the eye, composited over the viewmodel, on every
+     * shot. That is fine on a distant shooter (`src/ai` passes 0.12/0.006/0.8 for
+     * exactly this reason) and blinding on your own weapon: full auto turned the
+     * middle of the frame into a strobe you cannot see the target through.
+     *
+     * Kept well above the AI's values — it is still the brightest thing in the
+     * frame and still throws light on the hands — just not a screen-filling one.
+     */
+    this._firePayload = {
+      weapon: null,
+      origin: new THREE.Vector3(),
+      dir: new THREE.Vector3(),
+      seed: 0,
+      intensity: 0.42,
+      light: 0.55,
+      flashScale: 0.55,
+    };
     this._reloadPayload = { weapon: null, phase: 'start' };
     // `weapon:shell` carries the canonical { position, velocity } plus the real
     // case dimensions and a spin, so fx can size and tumble the brass instead of

@@ -46,8 +46,10 @@ export const WEAPON_DEFS = {
     spreadDecay: 3.6,
     /* --- recoil --- */
     recoil: {
-      pitch: 0.0085, // radians of camera climb per shot
-      yaw: 0.0022,
+      // Camera climb per shot. 0.0085 rad was 0.49 deg — a 30-round mag
+      // walked 15 deg, which is nothing to fight, so the gun felt like a laser.
+      pitch: 0.021,
+      yaw: 0.0055,
       kickBack: 0.019, // metres the viewmodel travels rearward
       kickUp: 0.0072,
       roll: 0.032,
@@ -176,8 +178,9 @@ export const WEAPON_DEFS = {
     spreadMax: 3.9,
     spreadDecay: 4.4,
     recoil: {
-      pitch: 0.0058,
-      yaw: 0.0026,
+      // Higher rate of fire, so per-shot climb stays under the rifle's.
+      pitch: 0.0155,
+      yaw: 0.0062,
       kickBack: 0.0135,
       kickUp: 0.0052,
       roll: 0.026,
@@ -241,8 +244,9 @@ export const WEAPON_DEFS = {
     spreadMax: 4.6,
     spreadDecay: 5.2,
     recoil: {
-      pitch: 0.0125,
-      yaw: 0.0032,
+      // Semi-auto: the whole kick lands on one shot.
+      pitch: 0.03,
+      yaw: 0.0072,
       kickBack: 0.012,
       kickUp: 0.0105,
       roll: 0.018,

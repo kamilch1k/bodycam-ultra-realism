@@ -601,6 +601,18 @@ export class Viewmodel {
     const ads = this.adsT;
     // Aiming braces the weapon: less travel, faster return.
     const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1);
+    /**
+     * ADS does not brace the weapon EVENLY, and treating it as one scale is why
+     * aimed fire used to climb the sight picture off the target.
+     *
+     * With the stock in the shoulder and the eye on the optic, the recoil
+     * impulse has nowhere to go but straight back into the shooter — so the
+     * viewmodel travels FURTHER rearward (toward the camera) and much LESS
+     * vertically. Hipfire is the opposite: nothing is bracing it, so the muzzle
+     * flips up.
+     */
+    const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1);
+    const upScale = lerp(1, 0.28, ads) * (first ? 1.18 : 1);
     const jitter = 0.86 + this.rng.float() * 0.3;
     this.recPos.f = r.freq;
     this.recPos.z = r.damping;
@@ -611,9 +623,9 @@ export class Viewmodel {
     const wp = TAU * this.recPos.f;
     const wr = TAU * this.recRot.f;
     this.recPos.kick(
-      this.rng.signed() * r.kickBack * 0.2 * scale * wp,
-      r.kickUp * scale * jitter * wp,
-      r.kickBack * scale * jitter * wp
+      this.rng.signed() * r.kickBack * 0.2 * backScale * wp,
+      r.kickUp * upScale * jitter * wp,
+      r.kickBack * backScale * jitter * wp
     );
     this.recRot.kick(
       (pitch * 5.5 + r.pitch * 1.4) * scale * jitter * wr,

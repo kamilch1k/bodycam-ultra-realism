@@ -116,7 +116,14 @@ export class Input {
 
   _onMouseDown(e) {
     if (!this.enabled) return;
-    if (!this.pointerLocked && e.button === 0) this.requestPointerLock();
+    // The click that RE-ACQUIRES pointer lock must not also reach the game.
+    // Coming back to a tab, or clicking after Esc, used to fire the weapon on
+    // the same press that locked the cursor — the player shoots the moment they
+    // click back in, at whatever the crosshair happened to be resting on.
+    if (!this.pointerLocked) {
+      if (e.button === 0) this.requestPointerLock();
+      return;
+    }
     this._pendingDown.add(`Mouse${e.button}`);
   }
 
