@@ -48,7 +48,13 @@ export default defineConfig({
     hmr: process.env.OW_NO_HMR ? false : undefined,
   },
   preview: { host: '127.0.0.1' },
-  build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 4096 },
+  // VITE_SOURCEMAP=0 for portal builds: the map is larger than the game itself
+  // and neither Yandex nor CrazyGames serves it.
+  build: {
+    target: 'es2022',
+    sourcemap: process.env.VITE_SOURCEMAP === '0' ? false : true,
+    chunkSizeWarningLimit: 4096,
+  },
   // Large binary game assets served verbatim.
   assetsInclude: ['**/*.ktx2', '**/*.hdr', '**/*.exr', '**/*.bin', '**/*.glb'],
 });

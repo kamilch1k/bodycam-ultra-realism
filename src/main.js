@@ -16,6 +16,7 @@ import { AudioSystem } from './audio/index.js';
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
 import { showMainMenu, showLoading, MAPS } from './ui/mainmenu.js';
+import { portal } from './core/portal.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -37,6 +38,18 @@ const lockstep = capture && params.get('lockstep') === '1';
  * whenever `?map=` names a level outright (so every tool, probe and deep link
  * still boots straight into the game), and for `?menu=0`.
  */
+/**
+ * Attach the games-portal SDK before the menu, not after.
+ *
+ * Yandex and CrazyGames both show their own loading screen until the game says
+ * it is ready, and both want that call as early as the game is genuinely
+ * playable — which here is the main menu, not the first rendered frame of a
+ * map. Awaiting it costs nothing off-portal (`init` returns immediately when no
+ * portal is configured) and is capped by a timeout on-portal, so a slow SDK can
+ * never be the reason the game does not start.
+ */
+await portal.init();
+
 const skipMenu = capture || params.has('map') || params.get('menu') === '0';
 const choice = skipMenu
   ? { map: params.get('map') ?? 'street', mode: params.get('mode') ?? 'tdm' }
@@ -134,6 +147,22 @@ window.__PREWARM__ = warmup;
 
 engine.start();
 loading?.done();
+
+/**
+ * Portal handshake. `loaded()` takes the portal's own loading screen down, and
+ * the gameplay bracket has to follow real play rather than the page lifetime —
+ * both portals use it for session analytics and Yandex certification checks it.
+ */
+portal.loaded();
+portal.gameplayStart();
+engine.events.on('ui:pause', ({ paused }) => {
+  if (paused) portal.gameplayStop();
+  else portal.gameplayStart();
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) portal.gameplayStop();
+  else if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
+});
 
 
 // Capture harness handshake: only flag ready once a frame has actually landed.
