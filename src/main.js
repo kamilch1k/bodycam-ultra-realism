@@ -82,6 +82,9 @@ const config = createConfig({
   stock: params.get('stock') ?? null,
   optic: params.get('optic') ?? null,
   deterministic: capture,
+  // ?glove=full|simple overrides the preset, so the two can be A/B captured
+  // from an identical camera instead of across a rebuild.
+  gloveOverride: params.get('glove') ?? null,
 });
 
 const canvas = document.getElementById('game');

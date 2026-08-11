@@ -112,11 +112,28 @@ export class Viewmodel {
     ctx.viewScene.add(this.anchor);
 
     // ---- arms -------------------------------------------------------------
+    /**
+     * SIMPLE GLOVE on mobile: one material for the shell, the pad and the seam,
+     * which lets each finger joint merge to a single mesh (see buildFinger).
+     *
+     * The two arms were 106 of the frame's ~146 visible meshes — more than the
+     * world (11) and the gun (29) put together — and three.js issues a draw call
+     * per mesh regardless of shared materials. The seam and pad GEOMETRY is
+     * still built either way, so the ridges and swells that separate the fingers
+     * remain; what is lost is only their distinct shading, which the file's own
+     * note measures at about one pixel per boundary. On a phone that pixel is
+     * not there to lose.
+     */
+    const ov = ctx.config?.gloveOverride;
+    const simpleGlove =
+      ov === 'simple' ? true : ov === 'full' ? false : ctx.config?.q?.simpleGlove === true;
+    const glove = mats.get('glove');
     const handMats = {
-      glove: mats.get('glove'),
-      pad: mats.get('glove_pad'),
-      seam: mats.get('glove_seam'),
+      glove,
+      pad: simpleGlove ? glove : mats.get('glove_pad'),
+      seam: simpleGlove ? glove : mats.get('glove_seam'),
       sleeve: mats.get('sleeve'),
+      simple: simpleGlove,
     };
     // Shoulder joints in CAMERA space: ~200 mm lateral, ~210 mm below the eye
     // and only just behind it.

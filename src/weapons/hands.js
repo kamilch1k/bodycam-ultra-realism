@@ -114,15 +114,31 @@ function buildFinger(materials, spec) {
   const root = new THREE.Object3D();
   const joints = [];
   let parent = root;
+  /**
+   * ONE MESH PER JOINT when the glove is drawn with a single material.
+   *
+   * Each joint carries a capsule, a seam strip and a pad, and three.js issues a
+   * draw call per mesh even when they share a material — there is no automatic
+   * batching. Two arms at 53 meshes each were 106 of the frame's ~146 visible
+   * meshes, far more than the world (11) or the gun (29). Merging is only legal
+   * once the three parts share a material, which is what `materials.simple`
+   * signals; the seam and pad geometry is KEPT either way, so the shapes that
+   * separate the fingers survive even when their distinct shading does not.
+   */
+  const simple = !!materials.simple;
+
   for (let i = 0; i < 3; i++) {
     const j = new THREE.Object3D();
     j.rotation.x = -curl[i];
     parent.add(j);
     const geo = mergeAll([segment(lengths[i], radii[i], radii[i + 1])]);
-    const mesh = new THREE.Mesh(geo, materials.glove);
-    mesh.castShadow = false;
-    mesh.receiveShadow = true;
-    j.add(mesh);
+    const batch = simple ? [geo] : null;
+    if (!simple) {
+      const mesh = new THREE.Mesh(geo, materials.glove);
+      mesh.castShadow = false;
+      mesh.receiveShadow = true;
+      j.add(mesh);
+    }
     // Sewn seams down BOTH flanks. One seam per finger leaves three boundaries
     // out of five unmarked; seaming both sides puts a light line at every
     // boundary, which is the whole point of the exercise. Two segments only —
@@ -136,16 +152,25 @@ function buildFinger(materials, spec) {
             ]
           : [segmentSeam(lengths[i], radii[i], radii[i + 1], seamSide)]
       );
-      j.add(new THREE.Mesh(seams, materials.seam ?? materials.glove));
+      if (simple) batch.push(seams);
+      else j.add(new THREE.Mesh(seams, materials.seam ?? materials.glove));
     }
     if (i < 2) {
-      const pad = new THREE.Mesh(segmentPad(lengths[i], radii[i]), materials.pad);
-      j.add(pad);
+      const padGeo = segmentPad(lengths[i], radii[i]);
+      if (simple) batch.push(padGeo);
+      else j.add(new THREE.Mesh(padGeo, materials.pad));
     } else {
       // fingertip grip patch on the palm side
       const tip = blob(radii[i] * 1.5, radii[i] * 0.5, lengths[i] * 0.7, radii[i] * 0.2, 2);
       tip.translate(0, -radii[i] * 0.72, -lengths[i] * 0.45);
-      j.add(new THREE.Mesh(tip, materials.pad));
+      if (simple) batch.push(tip);
+      else j.add(new THREE.Mesh(tip, materials.pad));
+    }
+    if (simple) {
+      const one = new THREE.Mesh(mergeAll(batch), materials.glove);
+      one.castShadow = false;
+      one.receiveShadow = true;
+      j.add(one);
     }
     const next = new THREE.Object3D();
     next.position.z = -lengths[i];

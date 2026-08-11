@@ -59,6 +59,8 @@ export const QUALITY_PRESETS = {
      * metres, so they carry a cut far more readily.
      */
     aiDetail: 0.5,
+    /** One material for the whole glove — see the note in viewmodel.js. */
+    simpleGlove: true,
     particleBudget: 1800,
     decalBudget: 48,
   },
