@@ -518,14 +518,33 @@ export class Agent {
       }
     }
 
-    // no cover yet, or the current one no longer protects: find one
+    /**
+     * No cover yet, or the current one no longer protects: find one.
+     *
+     * THE RANGES SCALE WITH THE ENGAGEMENT, because 7-30 m is a street-fight
+     * preference and it is wrong inside a building. `minRange` is a soft score
+     * penalty rather than a hard filter (nav.js only rejects cover closer than
+     * 2.5 m to the target outright), so at a 5 m room fight the fixed 7 docked
+     * 2.2 points from cover 3 m away while cover 8 m away — which in a kill
+     * house means through a wall, in the next room — was docked nothing. The
+     * agent's preference was to leave the room it was fighting in.
+     *
+     * `maxTravel` matters as much: 26 m is most of the way across the shoot
+     * house, and an enemy who answers a doorway contact by jogging to the far
+     * side of the building has effectively disengaged.
+     *
+     * `close` is 1 at 4 m and under, 0 at 12 m and over, so the street map's
+     * behaviour is untouched at the ranges it actually fights at.
+     */
     if (!this.cover || this.repathTimer <= 0) {
+      const close = Math.min(1, Math.max(0, (12 - dist) / 8));
+      const mix = (far, near) => far + (near - far) * close;
       const pick = this.ai.cover?.pick(this.position, target, {
         id: this.id,
         squad: sq?.members,
-        minRange: 7,
-        maxRange: 30,
-        maxTravel: this.cover ? 12 : 26,
+        minRange: mix(7, 2.6),
+        maxRange: mix(30, 11),
+        maxTravel: (this.cover ? 12 : 26) * mix(1, 0.42),
       });
       this.repathTimer = this.rng.range(2.2, 4.5);
       if (pick && pick !== this.cover) {
