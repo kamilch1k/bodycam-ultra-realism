@@ -185,6 +185,30 @@ loading?.done();
  * the gameplay bracket has to follow real play rather than the page lifetime —
  * both portals use it for session analytics and Yandex certification checks it.
  */
+/**
+ * What an ad has to do to the game: stop the clock, stop the gameplay bracket
+ * and mute the master bus. Injected rather than imported, so core/portal.js
+ * stays free of any dependency on audio or ui.
+ */
+portal.onPause = () => {
+  portal.gameplayStop();
+  const t = engine.ctx.time;
+  portal._adScale = t.scale;
+  t.scale = 0;
+  engine.ctx.peek('audio')?.setMasterVolume?.(0);
+};
+portal.onResume = () => {
+  const t = engine.ctx.time;
+  t.scale = portal._adScale ?? 1;
+  engine.ctx.peek('audio')?.setMasterVolume?.(1);
+  if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
+};
+
+// The dev server appends ?t= for HMR, which makes a dynamic import of the same
+// path a DIFFERENT module instance. Expose the real singleton so the ad path can
+// actually be exercised from the console.
+window.__PORTAL__ = portal;
+
 portal.loaded();
 portal.gameplayStart();
 engine.events.on('ui:pause', ({ paused }) => {

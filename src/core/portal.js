@@ -56,6 +56,14 @@ class Portal {
     this.ready = false;
     this._playing = false;
     this._readySent = false;
+    /** Enforces the portals' minimum gap between interstitials. */
+    this._lastAd = 0;
+    /**
+     * Supplied by main.js. `core` must not import `audio` or `ui`, so the
+     * mute-and-freeze that an ad requires is injected rather than reached for.
+     */
+    this.onPause = null;
+    this.onResume = null;
   }
 
   /** True when a real portal SDK is attached. */
@@ -132,6 +140,62 @@ class Portal {
     } catch (err) {
       console.warn('[portal] gameplayStop()', err);
     }
+  }
+
+  /**
+   * Show an interstitial.
+   *
+   * Both portals require the game to go QUIET AND STILL for the duration — an
+   * ad playing over a live firefight with the game's own audio underneath is a
+   * certification failure on Yandex and a review rejection on CrazyGames. So
+   * this brackets the call with the same gameplayStop/Start the pause menu uses
+   * and mutes the master bus, and it restores both on every exit path including
+   * the error one. An ad that fails to open must not leave the game silent.
+   *
+   * `onPause`/`onResume` are supplied by main.js rather than reached for here,
+   * because `core` must not depend on `audio` or `ui`.
+   *
+   * @returns {Promise<boolean>} true if an ad was actually shown
+   */
+  async showInterstitial() {
+    if (!this.sdk) return false;
+    const now = Date.now();
+    /**
+     * Yandex rejects interstitials closer together than 60 s and CrazyGames
+     * asks for a similar gap. Enforcing it here rather than at the call sites
+     * means a new call site cannot get it wrong.
+     */
+    if (now - this._lastAd < 60000) return false;
+    this._lastAd = now;
+
+    this.onPause?.();
+    let shown = false;
+    try {
+      if (this.target === 'yandex') {
+        await new Promise((done) => {
+          this.sdk.adv.showFullscreenAdv({
+            callbacks: {
+              onOpen: () => { shown = true; },
+              onClose: () => done(),
+              onError: () => done(),
+            },
+          });
+        });
+      } else {
+        await new Promise((done) => {
+          this.sdk.ad.requestAd('midgame', {
+            adStarted: () => { shown = true; },
+            adFinished: () => done(),
+            adError: () => done(),
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('[portal] showInterstitial()', err);
+    } finally {
+      this.onResume?.();
+    }
+    return shown;
   }
 }
 
