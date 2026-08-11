@@ -460,6 +460,29 @@ export class Viewmodel {
       }
     }
 
+    /**
+     * Swappable magazines. Unlike an optic or a muzzle device, a magazine is a
+     * MOVING part — the empty-reload clip drops it — so the variants cannot
+     * hang off the weapon body. They hang off a seat group, and `parts.magazine`
+     * is set to that seat so every existing consumer (the reload clip, the
+     * drop, `magVisible`) drives it without knowing anything changed.
+     */
+    const mags = {};
+    if (model.mags) {
+      const seat = new THREE.Object3D();
+      seat.name = `${model.id}-magseat`;
+      group.add(seat);
+      parts.magazine = seat;
+      for (const [name, spec] of Object.entries(model.mags)) {
+        const sub = new THREE.Object3D();
+        sub.name = `${model.id}-mag-${name}`;
+        sub.visible = false;
+        seat.add(sub);
+        build(spec.asm, sub);
+        mags[name] = { ...spec, group: sub };
+      }
+    }
+
     // Seat the moving parts at their rest transforms.
     const n = model.nodes;
     if (parts.magazine && n.magSeat) applyNode(parts.magazine, n.magSeat);
@@ -502,6 +525,8 @@ export class Viewmodel {
       opticId: null,
       muzzles,
       muzzleId: null,
+      mags,
+      magId: null,
     };
     this._fitSupportHand(entry);
     this.weapons.set(model.id, entry);
@@ -509,6 +534,8 @@ export class Viewmodel {
     if (optics.reddot) this.setOptic(entry.id, 'reddot');
     // ...and the device the muzzle node was authored around.
     if (muzzles.brake) this.setMuzzle(entry.id, 'brake');
+    // ...and the magazine every pose and animation was authored against.
+    if (mags.std30) this.setMag(entry.id, 'std30');
     return entry;
   }
 
@@ -556,6 +583,27 @@ export class Viewmodel {
     w.muzzleId = muzzleId;
     w.muzzle.z = spec.crownZ;
     return true;
+  }
+
+  /**
+   * Fit a different magazine. Visibility only — the seat and therefore the
+   * reload animation are untouched.
+   *
+   * @returns {boolean} false if this weapon has no such magazine
+   */
+  setMag(weaponId, magId) {
+    const w = this.weapons.get(weaponId);
+    const spec = w?.mags?.[magId];
+    if (!spec) return false;
+    for (const [name, m] of Object.entries(w.mags)) m.group.visible = name === magId;
+    w.magId = magId;
+    return true;
+  }
+
+  /** The fitted magazine's spec, or null. */
+  magSpec(weaponId) {
+    const w = this.weapons.get(weaponId);
+    return w?.mags?.[w.magId] ?? null;
   }
 
   /** The fitted device's spec, or null. */

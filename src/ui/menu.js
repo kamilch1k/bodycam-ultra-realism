@@ -1,6 +1,10 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
 import { OPTIC_ORDER } from '../weapons/optics.js';
 import { MUZZLE_ORDER } from '../weapons/muzzles.js';
+import { MAG_ORDER } from '../weapons/mags.js';
+
+/** Short labels for the segmented control; full names live in mags.js. */
+const MAG_LABELS = { short20: '20', std30: '30', ext45: '45' };
 
 /** Short labels for the segmented control; full names live in muzzles.js. */
 const MUZZLE_LABELS = {
@@ -113,6 +117,21 @@ export class PauseMenu {
       this.muzzleBtns.push([b, id]);
     }
     this.muzzleNote = el('div', 'val', this.muzzleRow, '');
+
+    // ---- magazine ---------------------------------------------------------
+    this.magRow = this._row('Magazine');
+    const gSeg = el('div', 'ow-seg', this.magRow);
+    this.magBtns = [];
+    for (const id of MAG_ORDER) {
+      const b = el('button', null, gSeg, MAG_LABELS[id]);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        this.ctx.peek('weapons')?.setMag?.(id);
+        this.syncFromConfig();
+      });
+      this.magBtns.push([b, id]);
+    }
+    this.magNote = el('div', 'val', this.magRow, '');
 
     // ---- advanced graphics ------------------------------------------------
     /**
@@ -319,6 +338,17 @@ export class PauseMenu {
       setStyle(b, 'opacity', has ? '' : '0.35');
     }
     if (this.muzzleNote) setText(this.muzzleNote, wp?.muzzle ? `heard ${wp.muzzle.loudness} m` : '');
+    const fittedG = wp?.magId ?? null;
+    for (const [b, id] of this.magBtns ?? []) {
+      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.mags?.[id];
+      b.classList.toggle('on', fittedG === id);
+      b.disabled = !has;
+      setStyle(b, 'opacity', has ? '' : '0.35');
+    }
+    if (this.magNote) {
+      const g = wp?.magSpec;
+      setText(this.magNote, g ? `reload x${g.reload.toFixed(2)}` : '');
+    }
     for (const f of this.featBtns ?? []) {
       const st = this._featureState(f.key);
       for (const [b, v] of f.pair) {

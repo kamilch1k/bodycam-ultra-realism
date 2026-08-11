@@ -1,6 +1,7 @@
 import { Assembly, box, blob, dome, extrude, roundRect, latheZ, rodZ, mergeAll } from '../geometry.js';
 import { buildOpticSet } from '../optics.js';
 import { buildMuzzleSet } from '../muzzles.js';
+import { buildMagSet } from '../mags.js';
 import {
   addBarrel,
   addGasBlock,
@@ -303,8 +304,13 @@ export function buildRifle() {
   addRearSight(body, 'polymer', 'alu', 0, railTop, -0.112, false);
 
   // ---- moving parts --------------------------------------------------------
-  const magazine = new Assembly('rifle-mag');
-  const mag = buildMagazine(magazine, null, {
+  /**
+   * The magazine is BOTH an attachment and a moving part: it drops on an empty
+   * reload. So the variants are not returned in `moving` — the viewmodel builds
+   * a seat group for them and animates that instead, and `parts.magazine` still
+   * means "the thing the reload clip drives". See mags.js.
+   */
+  const MAG_BASE = {
     w: 0.0255,
     d: 0.0655,
     len: 0.212,
@@ -312,7 +318,10 @@ export function buildRifle() {
     segs: 8,
     witness: 4,
     poly: 'polymer',
-  });
+  };
+  const mags = buildMagSet(MAG_BASE);
+  // The pose/animation reference: everything was authored against the 30.
+  const mag = { len: MAG_BASE.len };
 
   const charging = new Assembly('rifle-charging');
   const chG = chargingHandlePart();
@@ -356,7 +365,8 @@ export function buildRifle() {
     body,
     optics,
     muzzles,
-    moving: { magazine, charging, bolt, trigger, selector },
+    mags,
+    moving: { charging, bolt, trigger, selector },
     nodes: {
       muzzle: [0, bore, muzzle.crownZ],
       chamber: [0, bore, portZ],

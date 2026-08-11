@@ -330,6 +330,45 @@ export class WeaponSystem {
     return this.setWeapon(ids[(i + 1) % ids.length]);
   }
 
+  /* ---- magazines --------------------------------------------------------- */
+
+  get magSpec() {
+    return this.viewmodel?.magSpec(this.activeId) ?? null;
+  }
+
+  get magId() {
+    return this.viewmodel?.weapons.get(this.activeId)?.magId ?? null;
+  }
+
+  /**
+   * Fit a magazine to the ACTIVE weapon.
+   *
+   * The per-weapon `def` is a clone made at init, so writing the derived stats
+   * straight onto it is safe and every consumer — the HUD, the reload timers,
+   * `ammo` — picks them up without knowing attachments exist.
+   *
+   * Rounds already in the gun are KEPT, clamped to the new capacity: swapping to
+   * a 20 from a full 30 should cost you the ten that no longer fit, not refill
+   * you for free, and swapping up should not top you off either.
+   */
+  setMag(magId) {
+    const spec = this.viewmodel.magSpec(this.activeId);
+    if (!this.viewmodel.setMag(this.activeId, magId)) return false;
+    const s = this.states.get(this.activeId);
+    const m = this.viewmodel.magSpec(this.activeId);
+    if (s && m) {
+      const base = WEAPON_DEFS[this.activeId];
+      s.def.magSize = m.rounds;
+      s.def.reloadTac = base.reloadTac * m.reload;
+      s.def.reloadEmpty = base.reloadEmpty * m.reload;
+      s.def.adsTime = base.adsTime * m.ads;
+      s.def.drawTime = base.drawTime * m.draw;
+      s.mag = Math.min(s.mag, m.rounds);
+    }
+    this.ctx.events.emit('weapon:mag', { weapon: this.activeId, mag: magId });
+    return spec !== m;
+  }
+
   /* ---- muzzle devices ---------------------------------------------------- */
 
   /** The fitted device's spec, or null before weapons has finished init. */
