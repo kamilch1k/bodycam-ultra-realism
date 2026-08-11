@@ -20,7 +20,7 @@ what the packager produces.
 
 ## BLOCKING before either submission
 
-**The game is called OVERWATCH.** That is an active Blizzard Entertainment
+**The game is called HOTLINE STRIKE.** That is an active Blizzard Entertainment
 trademark in the video-game class, it is displayed at full size on the main menu
 and it is in `<title>`. Neither portal will pass certification with it, and
 shipping it commercially is an infringement rather than a naming quibble. This

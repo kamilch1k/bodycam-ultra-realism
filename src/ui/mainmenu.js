@@ -105,7 +105,7 @@ export function showMainMenu(initial = {}) {
 
   const root = el(`
     <div class="ow-fe">
-      <h1>Overwatch<span>Tactical Operations</span></h1>
+      <h1>Hotline Strike<span>Rapid Response</span></h1>
       <div class="ow-cols">
         <div class="ow-col" id="ow-maps"><h2>Map</h2>${list(MAPS, map)}</div>
         <div class="ow-col" id="ow-modes"><h2>Game mode</h2>${list(MODES, mode)}</div>
