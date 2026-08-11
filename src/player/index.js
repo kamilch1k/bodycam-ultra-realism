@@ -79,6 +79,7 @@
  */
 
 import * as THREE from 'three';
+import { AimAssist } from './assist.js';
 import { Movement } from './movement.js';
 import { CameraRig } from './camera.js';
 import { Health } from './health.js';
@@ -260,6 +261,22 @@ export class PlayerSystem {
     if (m.mantleMotion.active) {
       dYaw *= 0.55;
       dPitch *= 0.55;
+    }
+
+    /**
+     * AIM ASSIST rides on top of the player's own delta, never instead of it.
+     * `slow` damps the input inside the sticky cone so the reticle resists
+     * sliding off, and the pull is scaled by how much the player is already
+     * turning — a resting thumb keeps a resting camera, so the assist can never
+     * drag the view off something the player deliberately chose to look at.
+     */
+    if (this.assist?.enabled) {
+      const a = this.assist.update(dt, this.ctx.camera);
+      dYaw *= a.slow;
+      dPitch *= a.slow;
+      const moving = Math.min(1, (Math.abs(dYaw) + Math.abs(dPitch)) / (0.004 + 1e-6));
+      m.yaw += a.yaw * moving;
+      m.pitch = clamp(m.pitch + a.pitch * moving, -CAMERA.pitchLimit, CAMERA.pitchLimit);
     }
 
     m.yaw += dYaw;

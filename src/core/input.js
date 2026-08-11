@@ -53,12 +53,27 @@ export class Input {
      * input that opened it.
      */
     this.lockSuppressed = false;
+    /**
+     * True on the touch build. Pointer lock is meaningless without a cursor and
+     * on mobile Safari/Chrome the request either no-ops or throws, so it is
+     * refused outright rather than being suppressed — `lockSuppressed` is the
+     * menu's temporary flag and gets cleared when the menu closes.
+     */
+    this.touchMode = false;
     this.enabled = true;
     /** Set true by capture mode so scripted shots aren't fought by real input. */
     this.frozen = false;
 
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
+    /**
+     * Touch movement, kept SEPARATE from `stick` on purpose: `_pollGamepad`
+     * zeroes the stick every frame when no pad is present, which would wipe a
+     * thumb's input on the very next poll. Touch look does not live here — it
+     * goes straight into `_rawLook`, so it is a mouse delta by the time anything
+     * downstream sees it. See core/touch.js.
+     */
+    this.touch = { moveX: 0, moveY: 0 };
 
     this._bound = {
       keydown: this._onKeyDown.bind(this),
@@ -98,7 +113,7 @@ export class Input {
   }
 
   requestPointerLock() {
-    if (this.lockSuppressed) return;
+    if (this.lockSuppressed || this.touchMode) return;
     // Chrome returns a promise that rejects if the document is not eligible
     // (headless capture, an iframe, a lock request too soon after an exit).
     // An unhandled rejection there shows up as a page error in the harness, so
@@ -256,8 +271,9 @@ export class Input {
   moveVector(out = { x: 0, y: 0 }) {
     let x = (this.action('right') ? 1 : 0) - (this.action('left') ? 1 : 0);
     let y = (this.action('forward') ? 1 : 0) - (this.action('back') ? 1 : 0);
-    x += this.stick.moveX;
-    y -= this.stick.moveY;
+    x += this.stick.moveX + this.touch.moveX;
+    // Screen down is +y for both a stick and a thumb; forward is -y.
+    y -= this.stick.moveY + this.touch.moveY;
     const len = Math.hypot(x, y);
     if (len > 1) {
       x /= len;

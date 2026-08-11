@@ -844,7 +844,15 @@ export class WeaponSystem {
         if (this._state.ads && this.opticMagRange) this.zoomOptic(input.wheel);
         else this.nextWeapon();
       }
-      this._runTrigger(dt, input.fire, input.firePressed, def, s);
+      /**
+       * AUTO-FIRE. On touch the player has no spare thumb to hold a trigger
+       * while both are busy moving and aiming, so the assist holds it for them
+       * once a target is inside the tight cone with line of sight. It ORs with
+       * the real trigger rather than replacing it, so tapping Fire still works
+       * and nothing changes on desktop, where the assist is disabled outright.
+       */
+      const auto = this.player?.assist?.autoFire === true;
+      this._runTrigger(dt, input.fire || auto, input.firePressed || auto, def, s);
       st.trigger = input.fire && this.canFire();
       // Auto-reload on a dry trigger pull, like every modern shooter.
       if (input.firePressed && st.empty) this.reload();

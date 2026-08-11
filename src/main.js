@@ -17,6 +17,8 @@ import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
 import { showMainMenu, showLoading, MAPS } from './ui/mainmenu.js';
 import { portal } from './core/portal.js';
+import { TouchControls, isTouchDevice } from './core/touch.js';
+import { AimAssist } from './player/assist.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -154,6 +156,26 @@ const warmup =
     : { ok: false, reason: 'off by default — ?prewarm=1 to compile everything up front' };
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
+
+/**
+ * TOUCH BUILD. `?touch=1` forces it on for testing from a desktop and `?touch=0`
+ * forces it off on a phone; otherwise it follows the device. Everything it turns
+ * on — the on-screen controls, the aim assist and the auto-fire — is gated here,
+ * so a desktop player never gets any of it.
+ */
+const touchMode = params.get('touch') === '1' || (params.get('touch') !== '0' && isTouchDevice());
+if (touchMode) {
+  engine.input.touchMode = true;
+  const controls = new TouchControls(document.body, engine.input);
+  const player = engine.ctx.peek('player');
+  if (player) {
+    player.assist = new AimAssist(engine.ctx);
+    player.assist.enabled = true;
+  }
+  // The overlay must not sit over the pause menu — it would eat every tap.
+  engine.events.on('ui:pause', ({ paused }) => controls.setVisible(!paused));
+  window.__TOUCH__ = controls;
+}
 
 engine.start();
 loading?.done();
