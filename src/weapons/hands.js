@@ -275,13 +275,32 @@ function buildGlove(materials, opts = {}) {
   }
   root.add(new THREE.Mesh(mergeAll(seams), materials.pad));
 
-  // Wrist cuff + strap + a small steel keeper.
+  /**
+   * Wrist cuff + strap, SIZED TO THE WRIST.
+   *
+   * Both were derived from `w`, the 88 mm knuckle span, which is the wrong
+   * measurement: a wrist is a little over half the width of a spread hand. The
+   * strap came out at w * 0.5 = 44 mm of radius wrapped around a forearm sleeve
+   * that is 24 mm at the wrist (see buildSleeve, `0.024 * scale`), so it stood
+   * 20 mm clear of the arm all the way round.
+   *
+   * And a lathe band is an OPEN TUBE — there are no caps on the inner radius —
+   * so that annulus is not merely a floating ring, it is a hole you see the
+   * level through. On screen it reads as two thin dark loops hovering around
+   * the forearm with daylight between them and the sleeve, which is what the
+   * remaining "gaps in the glove" actually were. The fingers were a separate
+   * problem and a separate fix.
+   *
+   * 28 mm is a gloved wrist. That leaves ~4 mm over the sleeve, which is the
+   * thickness of the cuff itself rather than a gap.
+   */
+  const wr = 0.028 * scale;
   const cuff = latheZ(
     [
-      [0, w * 0.44],
-      [0.004 * scale, w * 0.47],
-      [0.03 * scale, w * 0.46],
-      [0.034 * scale, w * 0.42],
+      [0, wr * 0.96],
+      [0.004 * scale, wr * 1.04],
+      [0.03 * scale, wr * 1.02],
+      [0.034 * scale, wr * 0.94],
     ],
     16
   );
@@ -291,10 +310,10 @@ function buildGlove(materials, opts = {}) {
   root.add(cuffMesh);
   const strap = latheZ(
     [
-      [0, w * 0.47],
-      [0.0022, w * 0.5],
-      [0.009 * scale, w * 0.5],
-      [0.0112 * scale, w * 0.47],
+      [0, wr * 1.04],
+      [0.0022, wr * 1.13],
+      [0.009 * scale, wr * 1.13],
+      [0.0112 * scale, wr * 1.04],
     ],
     16
   );
