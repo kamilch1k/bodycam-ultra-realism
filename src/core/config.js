@@ -47,6 +47,12 @@ export const QUALITY_PRESETS = {
     bloom: true,
     anisotropy: 2,
     charTextureSize: 192,
+    /**
+     * Radial segment scale for every curve in the viewmodel — see
+     * weapons/geometry.js. The authored counts target a 1080p desktop ADS
+     * frame; a phone's is well under half that.
+     */
+    meshDetail: 0.45,
     particleBudget: 1800,
     decalBudget: 48,
   },

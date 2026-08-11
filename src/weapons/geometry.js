@@ -59,7 +59,36 @@ export function box(w, h, d, chamfer = 0.0012, seg = 1) {
 }
 
 /** A softly rounded block — grips, palm swells, butt pads. */
+/**
+ * GLOBAL SEGMENT SCALE for every round primitive in the weapon kit.
+ *
+ * Every curve in the viewmodel — the gun, the optics, the magazines and the
+ * gloved fingers — is built by the five functions below, so one multiplier here
+ * reaches all of it without touching a single call site. That matters because
+ * the segment counts are not arbitrary: the optic's 72/80 was solved for a
+ * 250 px objective ring at 1080p (see buildOptic), and hand-editing dozens of
+ * literals would lose the reasoning behind each one.
+ *
+ * On a phone the same ring is well under half that size, so the sagitta
+ * argument that justified 72 segments justifies about 32. The floors below stop
+ * the scale turning a barrel into a hexagon at any setting.
+ */
+let DETAIL = 1;
+
+/** @param {number} scale 0.25..1; 1 restores the authored counts. */
+export function setGeometryDetail(scale) {
+  DETAIL = Math.max(0.25, Math.min(1, scale || 1));
+}
+
+export function getGeometryDetail() {
+  return DETAIL;
+}
+
+/** Scale a radial segment count, never below `min`. */
+const S = (n, min) => Math.max(min, Math.round(n * DETAIL));
+
 export function blob(w, h, d, radius = 0.006, seg = 3) {
+  seg = S(seg, 2);
   return box(w, h, d, radius, seg);
 }
 
@@ -68,6 +97,7 @@ export function blob(w, h, d, radius = 0.006, seg = 3) {
  * from rear to front (or any order); radius 0 closes the form.
  */
 export function latheZ(profile, seg = 24, phiStart = 0, phiLength = Math.PI * 2) {
+  seg = S(seg, 8);
   const pts = [];
   for (let i = 0; i < profile.length; i++) {
     pts.push(new THREE.Vector2(Math.max(1e-5, profile[i][1]), profile[i][0]));
@@ -104,6 +134,7 @@ function flipWinding(geo) {
  * Used for barrels, optic tubes, suppressors, buffer tubes.
  */
 export function tubeZ(rOuter, rInner, len, seg = 24, crown = 0.0006) {
+  seg = S(seg, 8);
   const z0 = -len / 2;
   const z1 = len / 2;
   const c = Math.min(crown, (rOuter - rInner) * 0.4);
@@ -124,6 +155,7 @@ export function tubeZ(rOuter, rInner, len, seg = 24, crown = 0.0006) {
 
 /** Solid cylinder along Z with chamfered rims. */
 export function rodZ(r0, r1, len, seg = 20, chamfer = 0.0008) {
+  seg = S(seg, 8);
   const z0 = -len / 2;
   const z1 = len / 2;
   const c = Math.min(chamfer, len * 0.4, Math.min(r0, r1) * 0.5);
@@ -247,6 +279,7 @@ export function screw(rHead, rShank, headH, shankL, seg = 12) {
 
 /** Knurling / checkering: a band of tiny pyramids around a cylinder. */
 export function knurlBand(radius, len, count = 28, depth = 0.0004, rows = 3) {
+  count = S(count, 10);
   const parts = [];
   const cell = new THREE.OctahedronGeometry(depth * 2.2, 0);
   cell.scale(1, 1, 0.55);

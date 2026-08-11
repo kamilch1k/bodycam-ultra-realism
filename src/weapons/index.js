@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Rng } from '../core/rng.js';
 import { WeaponMaterials, ENV_OCCLUSION } from './materials.js';
+import { setGeometryDetail } from './geometry.js';
 import { Viewmodel } from './viewmodel.js';
 import { ProjectileSim } from './ballistics.js';
 import { WEAPON_DEFS, buildRecoilPattern, SPREAD_MODS } from './defs.js';
@@ -163,6 +164,13 @@ export class WeaponSystem {
   async init(ctx) {
     this.ctx = ctx;
     this.rng = ctx.rng.fork();
+    /**
+     * Segment scale must be set before ANYTHING is built. The arms are
+     * constructed inside `new Viewmodel(...)`, not in the model loop below, so
+     * setting it later silently skipped them — they were 54,720 of the
+     * viewmodel's triangles and did not move at all on the first attempt.
+     */
+    setGeometryDetail(ctx.config.q?.meshDetail ?? 1);
     this.mats = new WeaponMaterials(ctx);
     this.sim = new ProjectileSim(ctx);
     this.viewmodel = new Viewmodel(ctx, this.mats);
