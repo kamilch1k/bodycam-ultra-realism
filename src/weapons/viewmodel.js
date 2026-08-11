@@ -444,6 +444,19 @@ export class Viewmodel {
       }
     }
 
+    /** Swappable stocks — same build-all/toggle scheme as the optics. */
+    const stocks = {};
+    if (model.stocks) {
+      for (const [name, spec] of Object.entries(model.stocks)) {
+        const sub = new THREE.Object3D();
+        sub.name = `${model.id}-stock-${name}`;
+        sub.visible = false;
+        group.add(sub);
+        build(spec.asm, sub);
+        stocks[name] = { ...spec, group: sub };
+      }
+    }
+
     /** Swappable muzzle devices — same build-all/toggle scheme as the optics. */
     const muzzles = {};
     if (model.muzzles) {
@@ -527,6 +540,8 @@ export class Viewmodel {
       muzzleId: null,
       mags,
       magId: null,
+      stocks,
+      stockId: null,
     };
     this._fitSupportHand(entry);
     this.weapons.set(model.id, entry);
@@ -536,6 +551,8 @@ export class Viewmodel {
     if (muzzles.brake) this.setMuzzle(entry.id, 'brake');
     // ...and the magazine every pose and animation was authored against.
     if (mags.std30) this.setMag(entry.id, 'std30');
+    // ...and the length of pull the recoil numbers were authored against.
+    if (stocks.standard) this.setStock(entry.id, 'standard');
     return entry;
   }
 
@@ -598,6 +615,26 @@ export class Viewmodel {
     for (const [name, m] of Object.entries(w.mags)) m.group.visible = name === magId;
     w.magId = magId;
     return true;
+  }
+
+  /**
+   * Fit a different stock. Visibility only — the butt moves, nothing else does.
+   *
+   * @returns {boolean} false if this weapon has no such stock
+   */
+  setStock(weaponId, stockId) {
+    const w = this.weapons.get(weaponId);
+    const spec = w?.stocks?.[stockId];
+    if (!spec) return false;
+    for (const [name, st] of Object.entries(w.stocks)) st.group.visible = name === stockId;
+    w.stockId = stockId;
+    return true;
+  }
+
+  /** The fitted stock's spec, or null. */
+  stockSpec(weaponId) {
+    const w = this.weapons.get(weaponId);
+    return w?.stocks?.[w.stockId] ?? null;
   }
 
   /** The fitted magazine's spec, or null. */

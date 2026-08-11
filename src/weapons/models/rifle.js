@@ -2,6 +2,7 @@ import { Assembly, box, blob, dome, extrude, roundRect, latheZ, rodZ, mergeAll }
 import { buildOpticSet } from '../optics.js';
 import { buildMuzzleSet } from '../muzzles.js';
 import { buildMagSet } from '../mags.js';
+import { buildStockSet } from '../stocks.js';
 import {
   addBarrel,
   addGasBlock,
@@ -239,12 +240,17 @@ export function buildRifle() {
   addPistolGrip(body, 'polymer', 'rubber', { y: 0.035, z: 0.015, angle: 0.38, len: 0.108, w: 0.031 });
   // Buffer tube stays aluminium (it is a machined extrusion); the cheek riser and
   // butt stock are the polymer class, the pad is rubber. Three classes, one part.
-  addCarbineStock(body, 'alu', 'polymer', 'rubber', {
+  /**
+   * The stock is an ATTACHMENT, so it is not merged into the body — three
+   * lengths of pull, built once and toggled. See stocks.js.
+   */
+  const STOCK_BASE = {
     bore,
     zFront: zUpperRear + 0.003,
     zRear: 0.245,
     y: bore - 0.012,
-  });
+  };
+  const stocks = buildStockSet(STOCK_BASE);
 
   // ---- sights --------------------------------------------------------------
   /**
@@ -366,6 +372,7 @@ export function buildRifle() {
     optics,
     muzzles,
     mags,
+    stocks,
     moving: { charging, bolt, trigger, selector },
     nodes: {
       muzzle: [0, bore, muzzle.crownZ],

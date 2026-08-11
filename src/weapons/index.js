@@ -341,32 +341,66 @@ export class WeaponSystem {
   }
 
   /**
-   * Fit a magazine to the ACTIVE weapon.
+   * Recompute every attachment-derived stat for `weaponId` FROM THE BASE DEF.
    *
-   * The per-weapon `def` is a clone made at init, so writing the derived stats
-   * straight onto it is safe and every consumer — the HUD, the reload timers,
-   * `ammo` — picks them up without knowing attachments exist.
+   * This has to be a recompute, not an edit. The magazine and the stock both
+   * scale `adsTime`, so a setter that wrote `def.adsTime = base * mine` would
+   * silently throw away the other one's contribution, and a setter that wrote
+   * `def.adsTime *= mine` would compound every time you touched the menu. Both
+   * bugs are invisible until you swap twice.
    *
-   * Rounds already in the gun are KEPT, clamped to the new capacity: swapping to
-   * a 20 from a full 30 should cost you the ten that no longer fit, not refill
-   * you for free, and swapping up should not top you off either.
+   * The per-weapon `def` is a shallow clone made at init, so writing onto it is
+   * safe and every consumer — the HUD, the reload timers, `ammo` — picks the
+   * numbers up without knowing attachments exist. `recoil` is NOT cloned by
+   * that spread, so the stock's contribution is carried as a separate scalar
+   * and applied at the shot rather than written into the shared pattern.
    */
+  _applyAttachments(weaponId) {
+    const s = this.states.get(weaponId);
+    if (!s) return;
+    const base = WEAPON_DEFS[weaponId];
+    const vm = this.viewmodel;
+    const mag = vm.magSpec(weaponId);
+    const stock = vm.stockSpec(weaponId);
+
+    const magReload = mag?.reload ?? 1;
+    const adsScale = (mag?.ads ?? 1) * (stock?.ads ?? 1);
+
+    s.def.magSize = mag?.rounds ?? base.magSize;
+    s.def.reloadTac = base.reloadTac * magReload;
+    s.def.reloadEmpty = base.reloadEmpty * magReload;
+    s.def.adsTime = base.adsTime * adsScale;
+    s.def.drawTime = base.drawTime * (mag?.draw ?? 1);
+    s.def.swayScale = (base.swayScale ?? 1) * (stock?.sway ?? 1);
+    /** Applied to the deterministic climb pattern at the shot — see `_fire`. */
+    s.recoilScale = stock?.recoil ?? 1;
+    // Never refill on a swap; only ever drop what no longer fits.
+    s.mag = Math.min(s.mag, s.def.magSize);
+  }
+
+  /* ---- stocks ------------------------------------------------------------ */
+
+  get stockSpec() {
+    return this.viewmodel?.stockSpec(this.activeId) ?? null;
+  }
+
+  get stockId() {
+    return this.viewmodel?.weapons.get(this.activeId)?.stockId ?? null;
+  }
+
+  setStock(stockId) {
+    if (!this.viewmodel.setStock(this.activeId, stockId)) return false;
+    this._applyAttachments(this.activeId);
+    this.ctx.events.emit('weapon:stock', { weapon: this.activeId, stock: stockId });
+    return true;
+  }
+
+  /** Fit a magazine to the ACTIVE weapon. */
   setMag(magId) {
-    const spec = this.viewmodel.magSpec(this.activeId);
     if (!this.viewmodel.setMag(this.activeId, magId)) return false;
-    const s = this.states.get(this.activeId);
-    const m = this.viewmodel.magSpec(this.activeId);
-    if (s && m) {
-      const base = WEAPON_DEFS[this.activeId];
-      s.def.magSize = m.rounds;
-      s.def.reloadTac = base.reloadTac * m.reload;
-      s.def.reloadEmpty = base.reloadEmpty * m.reload;
-      s.def.adsTime = base.adsTime * m.ads;
-      s.def.drawTime = base.drawTime * m.draw;
-      s.mag = Math.min(s.mag, m.rounds);
-    }
+    this._applyAttachments(this.activeId);
     this.ctx.events.emit('weapon:mag', { weapon: this.activeId, mag: magId });
-    return spec !== m;
+    return true;
   }
 
   /* ---- muzzle devices ---------------------------------------------------- */
@@ -511,8 +545,15 @@ export class WeaponSystem {
 
     // ---- deterministic recoil pattern ----
     const idx = Math.min(this._shotIndex, def.recoil.patternLength - 1);
-    const pitch = s.pattern[idx * 2];
-    const yaw = s.pattern[idx * 2 + 1];
+    /**
+     * The STOCK scales the climb here rather than in the def, because
+     * `{ ...WEAPON_DEFS[id] }` is a shallow clone — `def.recoil` is the same
+     * object every weapon of this type shares, and writing to it would leak
+     * the stock's modifier into the base data for the rest of the session.
+     */
+    const rs = s.recoilScale ?? 1;
+    const pitch = s.pattern[idx * 2] * rs;
+    const yaw = s.pattern[idx * 2 + 1] * rs;
     this._shotIndex++;
 
     // ---- aim: camera forward + a spread cone ----

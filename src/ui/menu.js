@@ -2,6 +2,10 @@ import { el, setText, setStyle, clamp, damp, ease } from './util.js';
 import { OPTIC_ORDER } from '../weapons/optics.js';
 import { MUZZLE_ORDER } from '../weapons/muzzles.js';
 import { MAG_ORDER } from '../weapons/mags.js';
+import { STOCK_ORDER } from '../weapons/stocks.js';
+
+/** Short labels for the segmented control; full names live in stocks.js. */
+const STOCK_LABELS = { collapsed: 'short', standard: 'std', extended: 'long' };
 
 /** Short labels for the segmented control; full names live in mags.js. */
 const MAG_LABELS = { short20: '20', std30: '30', ext45: '45' };
@@ -132,6 +136,21 @@ export class PauseMenu {
       this.magBtns.push([b, id]);
     }
     this.magNote = el('div', 'val', this.magRow, '');
+
+    // ---- stock ------------------------------------------------------------
+    this.stockRow = this._row('Stock');
+    const sSeg = el('div', 'ow-seg', this.stockRow);
+    this.stockBtns = [];
+    for (const id of STOCK_ORDER) {
+      const b = el('button', null, sSeg, STOCK_LABELS[id]);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        this.ctx.peek('weapons')?.setStock?.(id);
+        this.syncFromConfig();
+      });
+      this.stockBtns.push([b, id]);
+    }
+    this.stockNote = el('div', 'val', this.stockRow, '');
 
     // ---- advanced graphics ------------------------------------------------
     /**
@@ -348,6 +367,17 @@ export class PauseMenu {
     if (this.magNote) {
       const g = wp?.magSpec;
       setText(this.magNote, g ? `reload x${g.reload.toFixed(2)}` : '');
+    }
+    const fittedS = wp?.stockId ?? null;
+    for (const [b, id] of this.stockBtns ?? []) {
+      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.stocks?.[id];
+      b.classList.toggle('on', fittedS === id);
+      b.disabled = !has;
+      setStyle(b, 'opacity', has ? '' : '0.35');
+    }
+    if (this.stockNote) {
+      const st = wp?.stockSpec;
+      setText(this.stockNote, st ? `recoil x${st.recoil.toFixed(2)}` : '');
     }
     for (const f of this.featBtns ?? []) {
       const st = this._featureState(f.key);
