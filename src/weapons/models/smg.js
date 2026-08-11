@@ -1,3 +1,5 @@
+import { buildMuzzleSet } from '../muzzles.js';
+import { buildMagSet } from '../mags.js';
 import { Assembly, box, blob, extrude, roundRect, latheZ, rodZ, tubeZ, dome, mergeAll } from '../geometry.js';
 import {
   addBarrel,
@@ -175,7 +177,12 @@ export function buildSmg() {
     gasAt: -0.2,
     knurl: false,
   });
-  const muzzle = addMuzzleDevice(body, 'steel_soot', 'cavity', 'trilug', zBarrelEnd, 0.0062, bore);
+  /**
+   * Swappable muzzle devices, same as the carbine. The SMG's default is the
+   * tri-lug, which is what the pose and the muzzle node were authored around.
+   */
+  const muzzles = buildMuzzleSet({ zBarrelEnd, rBarrel: 0.0062, bore, defaultKind: 'trilug' });
+  const muzzle = { len: 0.042, crownZ: muzzles.trilug.crownZ };
   addHandguard(body, 'alu', {
     y: bore,
     z0: hgZ0,
@@ -241,8 +248,8 @@ export function buildSmg() {
   addRearSight(body, 'polymer', 'alu', 0, railTop, -0.09, false);
 
   /* ---- moving parts -------------------------------------------------- */
-  const magazine = new Assembly('smg-mag');
-  const mag = buildMagazine(magazine, null, {
+  /** See mags.js — the variants hang off a seat the reload clip drives. */
+  const MAG_BASE = {
     w: 0.0235,
     d: 0.0335,
     len: 0.192,
@@ -253,7 +260,9 @@ export function buildSmg() {
     rimR: 0.00478,
     bulletLen: 0.0132,
     poly: 'polymer',
-  });
+  };
+  const mags = buildMagSet(MAG_BASE, { short: 25, std: 35, ext: 50 });
+  const mag = { len: MAG_BASE.len };
 
   // Non-reciprocating charging handle: a paddle in the cocking tube.
   const charging = new Assembly('smg-charging');
@@ -321,7 +330,9 @@ export function buildSmg() {
     label: 'MPX-9',
     fxClass: 'smg',
     body,
-    moving: { magazine, charging, bolt, trigger, selector },
+    muzzles,
+    mags,
+    moving: { charging, bolt, trigger, selector },
     nodes: {
       muzzle: [0, bore, muzzle.crownZ],
       chamber: [0, bore, portZ],

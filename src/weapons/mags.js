@@ -19,14 +19,17 @@ import { Assembly } from './geometry.js';
 import { buildMagazine } from './parts.js';
 
 /** Menu order: shortest to longest. */
-export const MAG_ORDER = ['short20', 'std30', 'ext45'];
+export const MAG_ORDER = ['short', 'std', 'ext'];
 
 /**
- * @param {object} base  the weapon's default magazine geometry options
- *                       (w/d/curve/segs/witness/poly), taken from the model so
- *                       each weapon's mags stay in its own calibre and profile
+ * @param {object} base    the weapon's default magazine geometry options
+ *                         (w/d/curve/segs/witness/poly), taken from the model so
+ *                         each weapon's mags stay in its own calibre and profile
+ * @param {object} [rounds] capacities per slot. Defaults are the carbine's; the
+ *                         SMG carries more because 9x19 is a smaller cartridge
+ *                         in the same envelope.
  */
-export function buildMagSet(base) {
+export function buildMagSet(base, rounds = { short: 20, std: 30, ext: 45 }) {
   const out = {};
 
   const mag = (id, spec, geo) => {
@@ -40,10 +43,10 @@ export function buildMagSet(base) {
    * behind. Faster on every count, and you stop to reload half again as often.
    */
   mag(
-    'short20',
+    'short',
     {
-      label: '20-round',
-      rounds: 20,
+      label: `${rounds.short}-round`,
+      rounds: rounds.short,
       reload: 0.92,
       ads: 0.95,
       draw: 0.94,
@@ -54,10 +57,10 @@ export function buildMagSet(base) {
   // 30-round: the issue magazine, and the one every pose and animation in the
   // game was authored against. Nothing scales.
   mag(
-    'std30',
+    'std',
     {
-      label: '30-round',
-      rounds: 30,
+      label: `${rounds.std}-round`,
+      rounds: rounds.std,
       reload: 1,
       ads: 1,
       draw: 1,
@@ -71,10 +74,10 @@ export function buildMagSet(base) {
    * cost has to be felt or the choice is not a choice.
    */
   mag(
-    'ext45',
+    'ext',
     {
-      label: '45-round',
-      rounds: 45,
+      label: `${rounds.ext}-round`,
+      rounds: rounds.ext,
       reload: 1.16,
       ads: 1.07,
       draw: 1.09,

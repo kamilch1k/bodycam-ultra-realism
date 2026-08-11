@@ -9,7 +9,7 @@ import { SKIN_ORDER, SKINS } from '../weapons/skins.js';
 const STOCK_LABELS = { collapsed: 'short', standard: 'std', extended: 'long' };
 
 /** Short labels for the segmented control; full names live in mags.js. */
-const MAG_LABELS = { short20: '20', std30: '30', ext45: '45' };
+const MAG_LABELS = { short: 'short', std: 'std', ext: 'ext' };
 
 /** Short labels for the segmented control; full names live in muzzles.js. */
 const MUZZLE_LABELS = {
@@ -18,6 +18,7 @@ const MUZZLE_LABELS = {
   brake: 'brake',
   comp: 'comp',
   can: 'can',
+  trilug: 'trilug',
 };
 
 /** Short enough to fit a segmented control; the full names live in optics.js. */
@@ -112,7 +113,7 @@ export class PauseMenu {
     this.muzzleRow = this._row('Muzzle');
     const mSeg = el('div', 'ow-seg', this.muzzleRow);
     this.muzzleBtns = [];
-    for (const id of MUZZLE_ORDER) {
+    for (const id of [...MUZZLE_ORDER, 'trilug']) {
       const b = el('button', null, mSeg, MUZZLE_LABELS[id]);
       b.type = 'button';
       b.addEventListener('click', () => {
@@ -381,7 +382,7 @@ export class PauseMenu {
     }
     if (this.magNote) {
       const g = wp?.magSpec;
-      setText(this.magNote, g ? `reload x${g.reload.toFixed(2)}` : '');
+      setText(this.magNote, g ? `${g.rounds} rds · reload x${g.reload.toFixed(2)}` : '');
     }
     const fittedS = wp?.stockId ?? null;
     for (const [b, id] of this.stockBtns ?? []) {

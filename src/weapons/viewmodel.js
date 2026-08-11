@@ -552,9 +552,10 @@ export class Viewmodel {
     // Default to the sight the ADS framing was measured against.
     if (optics.reddot) this.setOptic(entry.id, 'reddot');
     // ...and the device the muzzle node was authored around.
-    if (muzzles.brake) this.setMuzzle(entry.id, 'brake');
+    if (muzzles.trilug) this.setMuzzle(entry.id, 'trilug');
+    else if (muzzles.brake) this.setMuzzle(entry.id, 'brake');
     // ...and the magazine every pose and animation was authored against.
-    if (mags.std30) this.setMag(entry.id, 'std30');
+    if (mags.std) this.setMag(entry.id, 'std');
     // ...and the length of pull the recoil numbers were authored against.
     if (stocks.standard) this.setStock(entry.id, 'standard');
     return entry;

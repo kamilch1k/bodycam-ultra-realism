@@ -29,7 +29,10 @@ export const MUZZLE_ORDER = ['bare', 'a2', 'brake', 'comp', 'can'];
  * @param {number} o.zBarrelEnd  barrel crown before any device
  * @param {number} o.rBarrel
  * @param {number} o.bore        bore axis height
- * @param {string} [o.mat]       steel material key
+ * @param {string} [o.mat]          steel material key
+ * @param {string} [o.defaultKind]  an extra device this weapon carries as its
+ *                                  authored default (the SMG's tri-lug), added
+ *                                  to the set so it can be selected back
  */
 export function buildMuzzleSet(o) {
   const { zBarrelEnd, rBarrel, bore } = o;
@@ -99,6 +102,18 @@ export function buildMuzzleSet(o) {
     spread: 0.96,
     adsScale: 1.16,
   });
+
+  // A weapon whose authored default is not in the shared list carries it as an
+  // extra entry, so "put it back the way it was" stays reachable.
+  if (o.defaultKind === 'trilug') {
+    device('trilug', 'trilug', {
+      label: 'Tri-Lug',
+      loudness: 98,
+      flashScale: 0.8,
+      recoil: 0.97,
+      spread: 1.0,
+    });
+  }
 
   return out;
 }
