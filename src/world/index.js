@@ -4,6 +4,7 @@ import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { buildGround } from './ground.js';
 import { buildWhitebox } from './whitebox.js';
 import { buildShootHouse } from './shoothouse.js';
+import { buildArena, ARENAS } from './arenas.js';
 import { buildBuilding, collapseRoof } from './buildings.js';
 import { registerProps } from './props.js';
 import {
@@ -143,9 +144,10 @@ export class WorldSystem {
      * of it. See whitebox.js and shoothouse.js.
      */
     const mapId = ctx.config.map;
-    const box = mapId === 'box' || mapId === 'swat';
+    const box = mapId === 'box' || mapId === 'swat' || !!ARENAS[mapId];
     if (mapId === 'box') buildWhitebox(A);
     else if (mapId === 'swat') buildShootHouse(A);
+    else if (ARENAS[mapId]) buildArena(A, mapId);
 
     // 1. prototypes first: the level references them by id while it builds
     if (!box) {
@@ -190,7 +192,8 @@ export class WorldSystem {
     // -------------------------------------------------------------- queries --
     this._v = new THREE.Vector3();
     this._inv = new THREE.Matrix4().copy(A.xform).invert();
-    this.spawnPoints = (mapId === 'swat' ? SWAT_SPAWNS : SPAWNS).map(([x, z, yaw, tag]) => ({
+    const spawnTable = ARENAS[mapId]?.spawns ?? (mapId === 'swat' ? SWAT_SPAWNS : SPAWNS);
+    this.spawnPoints = spawnTable.map(([x, z, yaw, tag]) => ({
       position: A.toWorld(x, 0, z),
       yaw: yaw + LEVEL_YAW,
       tag,
