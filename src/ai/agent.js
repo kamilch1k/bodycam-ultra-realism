@@ -691,7 +691,26 @@ export class Agent {
       }
     }
 
-    // local avoidance: push off squadmates and steer around them
+    /**
+     * Local avoidance: push off squadmates and steer around them.
+     *
+     * THE PUSH HAS TO BE ABLE TO BEAT THE PATH. `_steer` starts as the unit
+     * vector toward the next waypoint, the push is added to it, and the sum is
+     * normalised — so separation only ever changes DIRECTION and a push that
+     * decays to zero at the threshold can never turn an agent away from its
+     * destination. It only bends the approach.
+     *
+     * Measured in the shoot house with all six alerted and pathing to one
+     * point: the closest pair sat at 0.7-1.1 m for twelve straight seconds with
+     * three or four pairs inside 2.5 m. Two 0.34 m capsules at 0.7 m are
+     * standing inside each other.
+     *
+     * Two changes. The engage radius goes from a 0.42 m clearance to 0.9, so
+     * they start giving way at 1.6 m instead of 1.1. And the falloff is
+     * quadratic with a hard overlap term: once the capsules actually intersect,
+     * getting out of each other is the only thing that matters and the path can
+     * wait a frame.
+     */
     const others = this.ai.agents;
     for (let i = 0; i < others.length; i++) {
       const o = others[i];
@@ -699,10 +718,12 @@ export class Agent {
       const dx = this.position.x - o.position.x;
       const dz = this.position.z - o.position.z;
       const d2 = dx * dx + dz * dz;
-      const rr = (this.radius + o.radius + 0.42) ** 2;
+      const contact = this.radius + o.radius;
+      const rr = (contact + 0.9) ** 2;
       if (d2 > rr || d2 < 1e-6) continue;
       const d = Math.sqrt(d2);
-      const push = (1 - d / Math.sqrt(rr)) * 1.5;
+      const t = 1 - d / Math.sqrt(rr);
+      const push = t * t * 2.6 + (d < contact ? ((contact - d) / contact) * 6 : 0);
       this._steer.x += (dx / d) * push;
       this._steer.z += (dz / d) * push;
       // tangential bias breaks head-on deadlocks deterministically
