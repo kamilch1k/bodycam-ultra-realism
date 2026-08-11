@@ -19,6 +19,37 @@ export const UNITS = {
 };
 
 export const QUALITY_PRESETS = {
+  /**
+   * MOBILE — the shipping default for the portals.
+   *
+   * The one structural difference from `low` is `shadows: false`. The cascade
+   * pass was measured at 326 of the frame's 644 draw calls and 3.0M of its 5.1M
+   * triangles; on a phone GPU that is not a 1.3 ms line item, it is the frame.
+   *
+   * Dropping it entirely used to make everything float, which is why `low` kept
+   * one short cascade. `contactShadows: true` is what replaces it: a short
+   * screen-space ray march toward the sun that resolves the 0-40 cm of contact
+   * under a crate or a boot. That is the part the eye actually reads as
+   * "standing on the ground" — the long soft cast shadow is not.
+   */
+  mobile: {
+    renderScale: 0.7,
+    shadows: false,
+    contactShadows: true,
+    shadowMapSize: 512,
+    cascades: 1,
+    shadowDistance: 30,
+    taa: false,
+    gtao: false,
+    ssr: false,
+    volumetrics: false,
+    motionBlur: false,
+    bloom: true,
+    anisotropy: 2,
+    charTextureSize: 192,
+    particleBudget: 1800,
+    decalBudget: 48,
+  },
   low: {
     // Web-first default: keep the scene readable while avoiding the expensive
     // desktop-only effects that make the first frame and steady-state GPU cost
@@ -98,9 +129,13 @@ export const QUALITY_PRESETS = {
 export const DEFAULTS = {
   // Start in the web-safe profile. Desktop players can opt into `?q=high` or
   // `?q=ultra`, and the in-game quality menu still exposes every preset.
-  quality: 'low',
-  /** Level to build: 'street' (the full map) or 'box' (greybox arena). */
-  map: 'street',
+  quality: 'mobile',
+  /**
+   * Level to build. Defaults to the shoot house, NOT the street map: the street
+   * takes ~25 s to build and on a portal that is a bounce rather than a load.
+   * The greybox levels are up in about a second.
+   */
+  map: 'swat',
   /** 'tdm' garrisons the level with enemy squads; 'sandbox' spawns none. */
   mode: 'tdm',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel

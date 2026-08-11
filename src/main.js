@@ -66,7 +66,9 @@ if (loading) {
 const config = createConfig({
   // Keep the launch path friendly to browser portals. Use ?q=ultra when
   // comparing the full desktop-quality renderer.
-  quality: params.get('q') ?? 'low',
+  // `mobile` is the shipping profile: no cascade pass, contact shadows instead.
+  // Desktop players can still opt into ?q=low/medium/high/ultra.
+  quality: params.get('q') ?? 'mobile',
   map: choice.map,
   mode: choice.mode,
   // ?skin= applies a weapon finish at boot — the only way to review one under

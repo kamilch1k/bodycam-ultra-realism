@@ -17,7 +17,7 @@ import { createComposite, createFxaa, createDebug, createViewComposite } from '.
 import { buildFallbackEnvironment } from './env.js';
 import { RenderProbeScene } from './probe.js';
 
-const QUALITY_LEVEL = { low: 0, medium: 1, high: 2, ultra: 3 };
+const QUALITY_LEVEL = { mobile: 0, low: 0, medium: 1, high: 2, ultra: 3 };
 
 /**
  * Registration range at or below which a punctual light counts as a room/street
@@ -131,6 +131,8 @@ export class RenderSystem {
     const q = cfg.q;
     this.q = q;
     this.qLevel = QUALITY_LEVEL[cfg.quality] ?? 3;
+    /** Presets may switch the cascade pass off outright — see `mobile`. */
+    this.shadowsOff = cfg.q?.shadows === false;
     this.rng = ctx.rng.fork();
     this.frame = 0;
 
@@ -189,6 +191,19 @@ export class RenderSystem {
       mapSize: q.shadowMapSize,
       maxDistance: q.shadowDistance,
     });
+    /**
+     * The CSM object stays ALIVE even with shadows off — its uniforms are baked
+     * into every patched material's program, so tearing it down would mean a
+     * different shader permutation and a recompile of the whole scene the
+     * moment anyone re-enables shadows from the menu. Disabling it skips the
+     * pass and zeroes the strength, which costs nothing and keeps one program
+     * set for both states.
+     */
+    if (this.shadowsOff) {
+      this.csm.enabled = false;
+      this.csm.setStrength(0);
+      renderer.shadowMap.enabled = false;
+    }
     this.patcher = new MaterialPatcher(this.csm.uniforms, {
       cascades: this.csm.cascades,
       quality: this.qLevel,
@@ -196,7 +211,14 @@ export class RenderSystem {
 
     this.gbuffer = new GBuffer();
     this._gtao = q.gtao ? new Gtao() : null;
-    this._contact = this.qLevel >= 1 ? new ContactShadows() : null;
+    /**
+     * Contact shadows are FORCED ON when the cascades are off, whatever the
+     * quality level. They are what keeps objects sitting on the ground once the
+     * cast shadows are gone, and they are cheap enough to be the right trade on
+     * a phone: a short screen-space march against the depth buffer, no extra
+     * draw calls and no second view of the scene.
+     */
+    this._contact = this.qLevel >= 1 || q.contactShadows ? new ContactShadows() : null;
     this._ssr = q.ssr ? new Ssr() : null;
     this._taa = q.taa ? new Taa() : null;
     this._motionBlur = q.motionBlur ? new MotionBlur() : null;
@@ -911,7 +933,7 @@ export class RenderSystem {
     const cu = this.composite.uniforms;
     cu.uLens.value.set(s.chromatic, s.vignette, s.grain, 0);
     cu.uGrade.value.set(s.bloomStrength, s.lutStrength, this.taa ? s.sharpen : 0, this.lut.size);
-    this.csm.setStrength(s.shadowStrength);
+    this.csm.setStrength(this.shadowsOff ? 0 : s.shadowStrength);
     if (this.bloom) {
       this.bloom.threshold = s.bloomThreshold;
       this.bloom.knee = s.bloomKnee;

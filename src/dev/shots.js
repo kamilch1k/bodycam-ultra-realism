@@ -47,6 +47,15 @@ export const SHOTS = {
   },
 
   // ---- weapon / viewmodel ----
+  /** Shoot-house overview — the shipping default map, from the courtyard. */
+  swat: {
+    pos: [14, 6.5, 34],
+    look: [-2, 1.2, -4],
+    fov: 72,
+    time: 15.0,
+    doc: 'Shoot House from the courtyard — level readability, contact shadows.',
+  },
+
   weapon: {
     pos: [6, 1.7, 10],
     look: [-2, 1.8, -2],
