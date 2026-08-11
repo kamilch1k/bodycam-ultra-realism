@@ -659,8 +659,19 @@ export class Arm {
       // clear of it — the daylight the critique measured. -6 mm puts the finger
       // axis 8 mm off the palm's contact plane, which is one finger radius.
       f.root.position.set(sp.x * this.scale, -0.006 * this.scale, -0.096 * this.scale);
-      // fingers fan out very slightly
-      f.root.rotation.y = -sp.x * 2.2;
+      /**
+       * Fingers fan out very slightly — 2.2 -> 0.9.
+       *
+       * The fan is authored for a RELAXED hand, where splayed fingers read as
+       * natural. Closed on a 29 mm foregrip it does the opposite: measured at
+       * the middle joints, the four fingers sat 0.3, 1.2 and 2.7 mm apart, and
+       * every one of those slots is a strip of the foregrip showing through the
+       * fist. Against a sunlit wall, with a near-black glove in front of a pale
+       * post, that is maximum contrast on a 1-3 mm feature — which is exactly
+       * why it reads as "gaps in the glove" and why it is invisible on a black
+       * weapon in shade. Fingers on a closed fist touch.
+       */
+      f.root.rotation.y = -sp.x * 0.9;
       this.glove.add(f.root);
       this.fingers.push(f);
     }
