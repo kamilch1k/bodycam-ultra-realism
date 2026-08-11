@@ -72,6 +72,11 @@ const config = createConfig({
   // ?skin= applies a weapon finish at boot — the only way to review one under
   // the real sun, since the weapons preview studio backlights every view.
   skin: params.get('skin') ?? null,
+  // Same reason: an attachment can only be judged in the game's own light.
+  muzzle: params.get('muzzle') ?? null,
+  mag: params.get('mag') ?? null,
+  stock: params.get('stock') ?? null,
+  optic: params.get('optic') ?? null,
   deterministic: capture,
 });
 

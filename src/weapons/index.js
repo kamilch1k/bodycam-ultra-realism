@@ -195,8 +195,19 @@ export class WeaponSystem {
         modeIndex: 0,
       });
     }
-    if (ctx.config.skin) {
-      for (const id of this.states.keys()) this.viewmodel.setSkin(id, ctx.config.skin);
+    /**
+     * Boot-time attachment overrides, for the capture harness. These apply to
+     * every weapon that HAS the named part; the setters no-op otherwise, so
+     * `?muzzle=can` leaves the pistol alone rather than failing.
+     */
+    const vm = this.viewmodel;
+    for (const id of this.states.keys()) {
+      if (ctx.config.skin) vm.setSkin(id, ctx.config.skin);
+      if (ctx.config.optic) vm.setOptic(id, ctx.config.optic);
+      if (ctx.config.muzzle) vm.setMuzzle(id, ctx.config.muzzle);
+      if (ctx.config.mag) vm.setMag(id, ctx.config.mag);
+      if (ctx.config.stock) vm.setStock(id, ctx.config.stock);
+      this._applyAttachments(id);
     }
     this.viewmodel.setActive(this.activeId);
     this.viewmodel.play('draw');

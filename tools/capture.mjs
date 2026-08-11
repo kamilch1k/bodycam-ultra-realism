@@ -92,7 +92,11 @@ try {
   const level =
     (args.map ? `&map=${encodeURIComponent(args.map)}` : '') +
     (args.mode ? `&mode=${encodeURIComponent(args.mode)}` : '') +
-    (args.skin ? `&skin=${encodeURIComponent(args.skin)}` : '');
+    (args.skin ? `&skin=${encodeURIComponent(args.skin)}` : '') +
+    (args.muzzle ? `&muzzle=${encodeURIComponent(args.muzzle)}` : '') +
+    (args.mag ? `&mag=${encodeURIComponent(args.mag)}` : '') +
+    (args.stock ? `&stock=${encodeURIComponent(args.stock)}` : '') +
+    (args.optic ? `&optic=${encodeURIComponent(args.optic)}` : '');
   await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${encodeURIComponent(SHOT)}${level}`, {
     waitUntil: 'domcontentloaded',
     timeout: TIMEOUT,
