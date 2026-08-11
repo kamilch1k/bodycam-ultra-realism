@@ -1,5 +1,5 @@
 import { Engine } from './core/engine.js';
-import { createConfig } from './core/config.js';
+import { createConfig, DEFAULTS } from './core/config.js';
 
 import { RenderSystem } from './render/index.js';
 import { MaterialSystem } from './materials/index.js';
@@ -54,7 +54,7 @@ await portal.init();
 
 const skipMenu = capture || params.has('map') || params.get('menu') === '0';
 const choice = skipMenu
-  ? { map: params.get('map') ?? 'street', mode: params.get('mode') ?? 'tdm' }
+  ? { map: params.get('map') ?? DEFAULTS.map, mode: params.get('mode') ?? DEFAULTS.mode }
   : await showMainMenu({ map: params.get('map'), mode: params.get('mode') });
 
 // Put the loading screen up and let it actually paint before anything blocks:
