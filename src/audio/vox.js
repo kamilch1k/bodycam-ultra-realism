@@ -117,6 +117,56 @@ export const BARKS = {
       { v: 'i', d: 0.12, a: 0.7, p: 0.88, on: 'p', g: 0 },
     ],
   },
+
+  /* ---- close quarters ---------------------------------------------------
+   * The shoot house needed its own vocabulary. The existing barks are all
+   * open-ground calls — flanking, suppressing, move up — and none of them are
+   * what a man says when the fight is happening through a doorway at four
+   * metres. These are shorter and higher: indoors everything is faster and
+   * nobody is projecting across a street.
+   */
+
+  /* "CLEAR!" — one hard syllable, falling. */
+  clear: {
+    f0: 1.14, drive: 1.2, syl: [
+      { v: 'i', d: 0.09, a: 0.85, p: 1.12, on: 'f', g: 0.01 },
+      { v: 'ehr', d: 0.17, a: 1.0, p: 0.9, g: 0 },
+    ],
+  },
+
+  /* "RELOADING — COVER ME!" ... the short version: "COVER ME!" */
+  coverme: {
+    f0: 1.16, drive: 1.25, syl: [
+      { v: 'a', d: 0.11, a: 1.0, p: 1.1, on: 'p', g: 0.01 },
+      { v: 'ehr', d: 0.09, a: 0.75, p: 0.95, g: 0.02 },
+      { v: 'i', d: 0.13, a: 0.9, p: 1.05, on: 'n', g: 0 },
+    ],
+  },
+
+  /* "BEHIND YOU!" — panicked, pitch climbs through all three. */
+  behind: {
+    f0: 1.24, drive: 1.4, syl: [
+      { v: 'i', d: 0.08, a: 0.8, p: 1.0, on: 'p', g: 0.008 },
+      { v: 'ah', d: 0.12, a: 1.05, p: 1.18, g: 0.012 },
+      { v: 'u', d: 0.14, a: 0.95, p: 1.3, g: 0 },
+    ],
+  },
+
+  /* "MAN DOWN!" — flat and heavy, the one call that does not rise. */
+  mandown: {
+    f0: 0.96, drive: 1.15, syl: [
+      { v: 'a', d: 0.13, a: 1.0, p: 1.0, on: 'n', g: 0.015 },
+      { v: 'o', d: 0.2, a: 0.9, p: 0.82, g: 0 },
+    ],
+  },
+
+  /* "ON ME!" — the rally call, two beats, second one held. */
+  onme: {
+    f0: 1.1, drive: 1.1, syl: [
+      { v: 'o', d: 0.1, a: 0.95, p: 1.05, g: 0.014 },
+      { v: 'i', d: 0.16, a: 0.9, p: 1.12, on: 'n', g: 0 },
+    ],
+  },
 };
 
 const WAVE_CACHE = new WeakMap();
@@ -317,6 +367,11 @@ export function barkFor(kind, rng) {
     case 'hurt': return rng.float() < 0.5 ? 'hit' : 'pain';
     case 'death': return 'death';
     case 'copy': return 'copy';
+    case 'clear': return 'clear';
+    case 'coverme': return 'coverme';
+    case 'behind': return 'behind';
+    case 'mandown': return 'mandown';
+    case 'rally': return 'onme';
     default: return 'contact';
   }
 }

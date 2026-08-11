@@ -380,6 +380,13 @@ export class Agent {
     } else if (s === STATE.FLANK) this._bark('flank', 0.7);
     else if (s === STATE.SUPPRESSED) this._bark('suppress', 0.5);
     else if (s === STATE.RETREAT) this._bark('hurt', 0.8);
+    /**
+     * Losing the contact is worth calling, and indoors it is worth MORE than
+     * finding it: "clear" is how a player behind a wall learns the man hunting
+     * them has given up on that room and is about to look somewhere else.
+     * Thinned hard — it is a status report, not a warning.
+     */
+    else if (s === STATE.ALERT && was === STATE.COMBAT) this._bark('clear', 0.4);
   }
 
   /**
@@ -913,6 +920,23 @@ export class Agent {
       // shouted "contact" two seconds ago is the one bark you always want.
       this._lastBark = -99;
       this._bark('death');
+      /**
+       * The nearest surviving squadmate calls it. Only one, and only if he is
+       * close enough to have seen it happen — six men all shouting "man down"
+       * for the same casualty is the noise the rate limiter exists to prevent,
+       * and it is exactly what a naive broadcast would produce.
+       */
+      let nearest = null;
+      let best = 18 * 18;
+      for (const m of this.squad?.members ?? []) {
+        if (m === this || !m.alive) continue;
+        const d2 = m.position.distanceToSquared(this.position);
+        if (d2 < best) {
+          best = d2;
+          nearest = m;
+        }
+      }
+      nearest?._bark('mandown', 0.85);
       this.die(point, dir, amount);
       return;
     }
