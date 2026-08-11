@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Arm, HAND_POSES } from './hands.js';
 import { buildClips, makeSampleResult } from './clips.js';
 import { triCount, mergeAll } from './geometry.js';
-import { SKINS, UNPAINTED } from './skins.js';
+import { SKINS, UNPAINTED, PAINT_FLOOR, PAINT_GAIN } from './skins.js';
 import {
   Spring,
   Spring3,
@@ -661,15 +661,49 @@ export class Viewmodel {
       const key = o.userData?.matKey;
       if (!o.isMesh || !key) return;
       let rec = w._skinMats.get(key);
-      if (!rec) {
+      if (rec === undefined) {
         // Leave glass, lens coatings and bore cavities alone: they are optical,
-        // not painted, and tinting them turns the sight picture green.
+        // not painted, and repainting them turns the sight picture green.
         if (UNPAINTED.has(key)) {
           w._skinMats.set(key, null);
           return;
         }
         const mat = o.material.clone();
-        rec = { mat, base: mat.color.clone() };
+        const uniforms = {
+          uSkinPaint: { value: new THREE.Vector3(1, 1, 1) },
+          uSkinAmount: { value: 0 },
+        };
+        /**
+         * The hook is installed ONCE, at clone time, and later skin changes only
+         * write the uniform values. Installing it per change would mean
+         * `needsUpdate = true` and a recompile of every material on the weapon in
+         * the middle of a match — fourteen programs on the carbine, which is a
+         * visible hitch for a menu click.
+         */
+        mat.onBeforeCompile = (shader) => {
+          shader.uniforms.uSkinPaint = uniforms.uSkinPaint;
+          shader.uniforms.uSkinAmount = uniforms.uSkinAmount;
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              '#include <common>',
+              `#include <common>
+               uniform vec3 uSkinPaint;
+               uniform float uSkinAmount;`
+            )
+            .replace(
+              '#include <color_fragment>',
+              `#include <color_fragment>
+               if (uSkinAmount > 0.0) {
+                 float skinLum = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+                 vec3 painted = uSkinPaint * (${PAINT_FLOOR.toFixed(3)} + ${PAINT_GAIN.toFixed(3)} * skinLum);
+                 diffuseColor.rgb = mix(diffuseColor.rgb, painted, uSkinAmount);
+               }`
+            );
+        };
+        // Force a distinct program so the hook is honoured rather than the
+        // uncustomised cached one being reused.
+        mat.customProgramCacheKey = () => `skin-${weaponId}-${key}`;
+        rec = { mat, uniforms };
         w._skinMats.set(key, rec);
       }
       if (!rec) return;
@@ -678,9 +712,8 @@ export class Viewmodel {
 
     for (const rec of w._skinMats.values()) {
       if (!rec) continue;
-      const t = skin.tint;
-      rec.mat.color.setRGB(rec.base.r * t[0], rec.base.g * t[1], rec.base.b * t[2]);
-      rec.mat.needsUpdate = true;
+      rec.uniforms.uSkinPaint.value.set(skin.paint[0], skin.paint[1], skin.paint[2]);
+      rec.uniforms.uSkinAmount.value = skin.amount;
     }
     w.skinId = skinId;
     return true;

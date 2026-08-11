@@ -91,7 +91,8 @@ try {
   // dedicated entry in src/dev/shots.js.
   const level =
     (args.map ? `&map=${encodeURIComponent(args.map)}` : '') +
-    (args.mode ? `&mode=${encodeURIComponent(args.mode)}` : '');
+    (args.mode ? `&mode=${encodeURIComponent(args.mode)}` : '') +
+    (args.skin ? `&skin=${encodeURIComponent(args.skin)}` : '');
   await page.goto(`http://127.0.0.1:${PORT}/?capture=1&shot=${encodeURIComponent(SHOT)}${level}`, {
     waitUntil: 'domcontentloaded',
     timeout: TIMEOUT,

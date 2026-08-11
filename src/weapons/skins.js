@@ -1,7 +1,25 @@
 /**
  * Weapon skins.
  *
- * A skin is an albedo TINT, not a texture set. Everything in this game is
+ * A skin is a REPAINT of the albedo, not a texture set and not a tint.
+ *
+ * The first attempt multiplied `material.color`, and it was wrong in a way that
+ * only showed up in-game: the base albedo is near black (0.03-0.05) and the wear
+ * masks paint bright metal on every chamfer, so a 3.2x multiplier left the body
+ * black and blew the speckles past 1.0 into saturated red and green. The gun did
+ * not turn tan, it grew confetti. Multiply is simply the wrong operator when the
+ * thing you want to change is nearly zero.
+ *
+ * The finish is applied in the shader instead, over the sampled albedo:
+ *
+ *   lum  = luminance(albedo)
+ *   skin = paint * (FLOOR + GAIN * lum)
+ *   out  = mix(albedo, skin, amount)
+ *
+ * The paint supplies the colour and the map supplies all the variation, so wear,
+ * grime, AO and moulded texture come through as light and shade in the new
+ * colour. That is also what a real Cerakote job looks like: the finish is opaque
+ * and the surface underneath still reads. Everything in this game is
  * procedurally baked at load, and a second set of maps per skin would multiply
  * the texture bake — already the largest single item in boot time — by the
  * number of skins. A multiplier over the existing albedo gets a Cerakote finish
@@ -36,19 +54,32 @@ export const UNPAINTED = new Set([
 /** Menu order. */
 export const SKIN_ORDER = ['black', 'fde', 'od', 'urban', 'bronze'];
 
+/**
+ * `paint` is the finish's own albedo. `amount` is how completely it covers.
+ *
+ * NOT a multiplier — see the note at the top of the file for why that failed.
+ * The shader rebuilds the albedo as `paint * (floor + gain * luminance)`, so the
+ * finish supplies the colour and the original map supplies every variation:
+ * wear, grime, AO and the moulded texture all survive as light and shade in the
+ * new colour instead of being scaled into confetti.
+ */
 export const SKINS = {
-  /** Issue black. The identity tint — this is what everything was authored as. */
-  black: { label: 'Black', tint: [1, 1, 1] },
+  /** Issue black — the authored finish. amount 0 leaves the albedo untouched. */
+  black: { label: 'Black', paint: [1, 1, 1], amount: 0 },
 
-  /** Flat Dark Earth: the standard modern furniture colour. */
-  fde: { label: 'FDE', tint: [3.2, 2.45, 1.55] },
+  /** Flat Dark Earth. Real FDE furniture sits near 0.34 albedo. */
+  fde: { label: 'FDE', paint: [0.44, 0.34, 0.21], amount: 0.92 },
 
-  /** OD green, cooler and darker than FDE so the two never read as one skin. */
-  od: { label: 'OD Green', tint: [1.9, 2.35, 1.35] },
+  /** OD green: darker and much cooler, so it never reads as FDE in shade. */
+  od: { label: 'OD Green', paint: [0.22, 0.26, 0.15], amount: 0.92 },
 
-  /** Urban grey — a wolf-grey Cerakote. Neutral, so only the value moves. */
-  urban: { label: 'Urban', tint: [2.5, 2.55, 2.6] },
+  /** Wolf grey. Neutral — only the value moves, which is the point of it. */
+  urban: { label: 'Urban', paint: [0.36, 0.37, 0.38], amount: 0.9 },
 
   /** Burnt bronze. Warm and dark; the one that still reads at night. */
-  bronze: { label: 'Bronze', tint: [2.7, 1.75, 0.95] },
+  bronze: { label: 'Bronze', paint: [0.3, 0.19, 0.1], amount: 0.94 },
 };
+
+/** Luminance floor and gain — see the shader hook in viewmodel.setSkin. */
+export const PAINT_FLOOR = 0.55;
+export const PAINT_GAIN = 2.6;

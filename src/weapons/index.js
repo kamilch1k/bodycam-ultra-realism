@@ -195,6 +195,9 @@ export class WeaponSystem {
         modeIndex: 0,
       });
     }
+    if (ctx.config.skin) {
+      for (const id of this.states.keys()) this.viewmodel.setSkin(id, ctx.config.skin);
+    }
     this.viewmodel.setActive(this.activeId);
     this.viewmodel.play('draw');
 

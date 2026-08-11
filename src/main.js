@@ -69,6 +69,9 @@ const config = createConfig({
   quality: params.get('q') ?? 'low',
   map: choice.map,
   mode: choice.mode,
+  // ?skin= applies a weapon finish at boot — the only way to review one under
+  // the real sun, since the weapons preview studio backlights every view.
+  skin: params.get('skin') ?? null,
   deterministic: capture,
 });
 
