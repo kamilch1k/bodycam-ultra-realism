@@ -114,7 +114,37 @@ export function vcount(m) {
 /* ---- profiles ---- */
 
 /** Superellipse ring in the XZ plane. `n` 2 = ellipse, 6+ = rounded box. */
+/**
+ * GLOBAL DENSITY SCALE for every soldier primitive.
+ *
+ * Same device as weapons/geometry.js and for the same reason: the ring and
+ * segment counts below encode judgements about silhouette quality at a given
+ * screen size, and rewriting dozens of literals would throw that reasoning away.
+ * One multiplier scales all of it.
+ *
+ * Enemies are the largest remaining item in the frame — 145.6k triangles
+ * resident across six soldiers, against the viewmodel's 90k — and unlike the
+ * gun they are never closer than a few metres, so they can afford it far more
+ * readily. `rows` is scaled as well as `seg`: a soldier is a stack of lofted
+ * rings, so density is the product of the two and halving only one halves only
+ * half the cost.
+ */
+let AI_DETAIL = 1;
+
+/** @param {number} scale 0.3..1; 1 restores the authored counts. */
+export function setAiDetail(scale) {
+  AI_DETAIL = Math.max(0.3, Math.min(1, scale || 1));
+}
+
+export function getAiDetail() {
+  return AI_DETAIL;
+}
+
+/** Scale a segment/row count, never below `min`. */
+const AS = (n, min) => Math.max(min, Math.round(n * AI_DETAIL));
+
 export function superEllipse(rx, rz, n = 2, seg = 16, rot = 0) {
+  seg = AS(seg, 8);
   const pts = new Array(seg);
   const e = 2 / n;
   for (let i = 0; i < seg; i++) {
@@ -283,6 +313,7 @@ export function tube(points, profile, opts = {}) {
 
 /** Revolve a 2D profile [[r,y],...] about +Y. */
 export function revolve(profile, seg = 20, opts = {}) {
+  seg = AS(seg, 8);
   const rings = [];
   for (let i = 0; i < profile.length; i++) {
     const [r, y] = profile[i];
@@ -298,8 +329,8 @@ export function revolve(profile, seg = 20, opts = {}) {
  */
 export function boxRound(hx, hy, hz, opts = {}) {
   const n = opts.n ?? 5;
-  const seg = opts.seg ?? 20;
-  const rows = opts.rows ?? 9;
+  const seg = AS(opts.seg ?? 20, 8);
+  const rows = AS(opts.rows ?? 9, 4);
   const roundY = opts.roundY ?? 0.28;
   const ny = opts.ny ?? 5;
   const rings = [];
@@ -319,8 +350,8 @@ export function boxRound(hx, hy, hz, opts = {}) {
 
 /** Ellipsoid with optional latitude clamp (helmet dome, head, shoulder). */
 export function ellipsoid(rx, ry, rz, opts = {}) {
-  const seg = opts.seg ?? 22;
-  const rows = opts.rows ?? 14;
+  const seg = AS(opts.seg ?? 22, 8);
+  const rows = AS(opts.rows ?? 14, 5);
   const v0 = opts.v0 ?? 0; // 0 = south pole
   const v1 = opts.v1 ?? 1;
   const rings = [];

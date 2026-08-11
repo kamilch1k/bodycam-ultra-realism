@@ -53,6 +53,12 @@ export const QUALITY_PRESETS = {
      * frame; a phone's is well under half that.
      */
     meshDetail: 0.45,
+    /**
+     * Soldier mesh density — see ai/geo.js. Enemies are the largest remaining
+     * item in the frame and, unlike the weapon, are never closer than a few
+     * metres, so they carry a cut far more readily.
+     */
+    aiDetail: 0.5,
     particleBudget: 1800,
     decalBudget: 48,
   },

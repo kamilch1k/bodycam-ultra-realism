@@ -38,6 +38,7 @@
  */
 
 import * as THREE from 'three';
+import { setAiDetail } from './geo.js';
 import { SoldierMaterials } from './textures.js';
 import { buildSoldier, resolveMaterials, MATERIAL_SLOTS, VARIANTS } from './soldier.js';
 import { RIG } from './rig.js';
@@ -53,6 +54,11 @@ export class AiSystem {
   async init(ctx) {
     this.ctx = ctx;
     this.rng = ctx.rng.fork();
+    /**
+     * Set before any soldier variant is built — the builders read it at
+     * construction time and the meshes are merged immediately after.
+     */
+    setAiDetail(ctx.config.q?.aiDetail ?? 1);
     this.root = new THREE.Group();
     this.root.name = 'ai';
     ctx.scene.add(this.root);
