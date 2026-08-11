@@ -197,6 +197,8 @@ export class Agent {
     this.searchPoint = new THREE.Vector3();
     this.suppression = 0;
     this.reactionTimer = 0;
+    /** Scratch for the fanned approach bearing — see the ALERT branch. */
+    this._approach = new THREE.Vector3();
     this.alertness = 0;
 
     /* ---------------- combat ---------------- */
@@ -448,8 +450,40 @@ export class Agent {
           this._enterCombat();
           break;
         }
-        // move to the last known position, then look around
-        if (this.lastKnownAge < 8 && !this.hasMoveTarget) this._goTo(this.lastKnown);
+        /**
+         * Move ONTO the last known position, but not to the same square as
+         * everybody else.
+         *
+         * Every member of the squad was pathing to the identical point, so the
+         * whole garrison converged into one huddle — measured on the shoot house
+         * at six of fifteen pairs inside 2.5 m, which is a doorway's worth of
+         * men standing on each other. Separation steering can only stop them
+         * interpenetrating once they arrive; it cannot stop them all being sent
+         * to the same place.
+         *
+         * Each man takes a different BEARING onto the point instead, spaced by
+         * his index in the squad, so three men arrive on three sides of the room
+         * rather than three deep behind one wall. Deterministic, so a replay of
+         * the same seed puts the same man on the same side.
+         */
+        if (this.lastKnownAge < 8 && !this.hasMoveTarget) {
+          const sq = this.squad;
+          const n = Math.max(1, sq?.members.length ?? 1);
+          const idx = sq ? Math.max(0, sq.members.indexOf(this)) : 0;
+          if (n > 1) {
+            const ang = (idx / n) * Math.PI * 2;
+            const R = 3.4;
+            this._approach.set(
+              this.lastKnown.x + Math.cos(ang) * R,
+              this.lastKnown.y,
+              this.lastKnown.z + Math.sin(ang) * R
+            );
+            // A bearing that lands inside a wall is worse than no bearing.
+            if (!this._goTo(this._approach)) this._goTo(this.lastKnown);
+          } else {
+            this._goTo(this.lastKnown);
+          }
+        }
         if (this.stateTime > 12) this._setState(this.patrolPoints ? STATE.PATROL : STATE.IDLE);
         break;
       }
