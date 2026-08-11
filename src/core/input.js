@@ -44,6 +44,15 @@ export class Input {
     this._pendingWheel = 0;
 
     this.pointerLocked = false;
+    /**
+     * Set while a menu owns the cursor. The click that re-acquires pointer lock
+     * is a CONVENIENCE for getting back into the game, and it has to be off
+     * while the pause menu is up: without it, the first click on any setting
+     * grabbed the cursor back, so the button never got pressed and the pointer
+     * vanished to the middle of the screen. The menu is unusable with the very
+     * input that opened it.
+     */
+    this.lockSuppressed = false;
     this.enabled = true;
     /** Set true by capture mode so scripted shots aren't fought by real input. */
     this.frozen = false;
@@ -89,6 +98,7 @@ export class Input {
   }
 
   requestPointerLock() {
+    if (this.lockSuppressed) return;
     // Chrome returns a promise that rejects if the document is not eligible
     // (headless capture, an iframe, a lock request too soon after an exit).
     // An unhandled rejection there shows up as a page error in the harness, so
@@ -121,7 +131,7 @@ export class Input {
     // the same press that locked the cursor — the player shoots the moment they
     // click back in, at whatever the crosshair happened to be resting on.
     if (!this.pointerLocked) {
-      if (e.button === 0) this.requestPointerLock();
+      if (e.button === 0 && !this.lockSuppressed) this.requestPointerLock();
       return;
     }
     this._pendingDown.add(`Mouse${e.button}`);

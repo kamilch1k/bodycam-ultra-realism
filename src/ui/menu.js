@@ -419,6 +419,9 @@ export class PauseMenu {
     this.open = true;
     this.syncFromConfig();
     setStyle(this.root, 'display', '');
+    // Release the cursor AND stop anything re-grabbing it: a click on a setting
+    // must land on the setting, not be swallowed by a re-lock.
+    if (this.ctx.input) this.ctx.input.lockSuppressed = true;
     document.exitPointerLock?.();
     const t = this.ctx.time;
     if (t) {
@@ -435,6 +438,7 @@ export class PauseMenu {
     const t = this.ctx.time;
     if (t) t.scale = this._prevScale ?? 1;
     this.ctx.peek('player')?.setControlEnabled?.(true);
+    if (this.ctx.input) this.ctx.input.lockSuppressed = false;
     this.ctx.input?.requestPointerLock?.();
     this.ctx.events.emit('ui:pause', { paused: false });
   }
