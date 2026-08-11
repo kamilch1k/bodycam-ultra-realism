@@ -444,6 +444,22 @@ export class Viewmodel {
       }
     }
 
+    /** Swappable muzzle devices — same build-all/toggle scheme as the optics. */
+    const muzzles = {};
+    if (model.muzzles) {
+      for (const [name, spec] of Object.entries(model.muzzles)) {
+        let sub = null;
+        if (spec.asm) {
+          sub = new THREE.Object3D();
+          sub.name = `${model.id}-muzzle-${name}`;
+          sub.visible = false;
+          group.add(sub);
+          build(spec.asm, sub);
+        }
+        muzzles[name] = { ...spec, group: sub };
+      }
+    }
+
     // Seat the moving parts at their rest transforms.
     const n = model.nodes;
     if (parts.magazine && n.magSeat) applyNode(parts.magazine, n.magSeat);
@@ -484,11 +500,15 @@ export class Viewmodel {
       lhandPose: model.id === 'pistol' ? 'cup' : 'clamp',
       optics,
       opticId: null,
+      muzzles,
+      muzzleId: null,
     };
     this._fitSupportHand(entry);
     this.weapons.set(model.id, entry);
     // Default to the sight the ADS framing was measured against.
     if (optics.reddot) this.setOptic(entry.id, 'reddot');
+    // ...and the device the muzzle node was authored around.
+    if (muzzles.brake) this.setMuzzle(entry.id, 'brake');
     return entry;
   }
 
@@ -514,6 +534,34 @@ export class Viewmodel {
     // Irons have no glass, so they aim with the weapon's own BUIS node.
     w.sight.copy(spec.glass ? _v.set(0, spec.glass.center[1], spec.glass.lensZ) : w.ironSight);
     return true;
+  }
+
+  /**
+   * Fit a different muzzle device.
+   *
+   * Unlike an optic this MOVES THE MUZZLE: a 165 mm suppressor puts the crown
+   * 103 mm further downrange than the 62 mm brake, and the flash, the smoke and
+   * the tracer all spawn at that node. Leave it where it was and a suppressed
+   * shot flashes from inside the can.
+   *
+   * @returns {boolean} false if this weapon has no such device
+   */
+  setMuzzle(weaponId, muzzleId) {
+    const w = this.weapons.get(weaponId);
+    const spec = w?.muzzles?.[muzzleId];
+    if (!spec) return false;
+    for (const [name, m] of Object.entries(w.muzzles)) {
+      if (m.group) m.group.visible = name === muzzleId;
+    }
+    w.muzzleId = muzzleId;
+    w.muzzle.z = spec.crownZ;
+    return true;
+  }
+
+  /** The fitted device's spec, or null. */
+  muzzleSpec(weaponId) {
+    const w = this.weapons.get(weaponId);
+    return w?.muzzles?.[w.muzzleId] ?? null;
   }
 
   /** The magnification currently in front of the eye, 1 when hipfiring. */

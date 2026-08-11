@@ -33,7 +33,15 @@ import {
 const TAU = Math.PI * 2;
 
 /** Overall length of each muzzle device, so callers can lay out the barrel. */
-export const MUZZLE_LEN = { brake: 0.062, a2: 0.0483, comp: 0.058, trilug: 0.042 };
+export const MUZZLE_LEN = {
+  brake: 0.062,
+  a2: 0.0483,
+  comp: 0.058,
+  trilug: 0.042,
+  // A 5.56 can is a real object: 165 mm and 39 mm across, and it should look
+  // like it weighs something on the end of a 14.5" barrel.
+  can: 0.165,
+};
 
 /* -------------------------------------------------------------------------- */
 /*  small hardware                                                            */
@@ -254,6 +262,46 @@ export function addMuzzleDevice(asm, matSteel, matCavity, kind, zBarrelEnd, rBar
   // The device threads onto the barrel, so its rear face sits at the barrel end
   // and the crown ends up `len` further forward.
   const zCrown = zBarrelEnd - len;
+
+  /**
+   * SUPPRESSOR. A plain welded tube — no ports, no prongs, because that is what
+   * one is: a sealed can with a blast baffle stack you cannot see from outside.
+   * The only exterior features are the mount shoulder at the rear, a knurled
+   * grip band, and a slightly stepped muzzle end.
+   */
+  if (kind === 'can') {
+    const rCan = rBarrel + 0.0122;
+    parts.push(
+      latheZ(
+        [
+          [0, rBarrel + 0.0012],
+          [0.004, rBarrel + 0.0055],
+          [0.009, rCan * 0.97],
+          [0.014, rCan],
+          [len - 0.016, rCan],
+          [len - 0.011, rCan * 0.985],
+          [len - 0.004, rCan * 0.985],
+          [len, rCan * 0.9],
+          [len, rBarrel * 0.72],
+          [len - 0.01, rBarrel * 0.7],
+          [len - 0.01, 0],
+        ],
+        26
+      )
+    );
+    // Knurled band two thirds down, the one thing that stops a 165 mm tube
+    // reading as a grey cylinder at any distance.
+    parts.push(knurlBand(rCan + 0.0002, 0.026, 34, 0.0005, 3).translate(0, 0, 0.104));
+    const geo = mergeAll(parts);
+    // Authored breech-to-crown along +Z, so flip it onto the muzzle — same
+    // convention as every other device below.
+    asm.add(geo, matSteel, { y, z: zCrown + len, ry: Math.PI });
+    geo.dispose();
+    const canBore = tubeZ(rBarrel * 0.72, rBarrel * 0.45, len * 0.75, 14, 0.0002);
+    asm.add(canBore, matCavity, { y, z: zCrown + len * 0.55 });
+    canBore.dispose();
+    return { len, crownZ: zCrown };
+  }
 
   if (kind === 'brake') {
     parts.push(

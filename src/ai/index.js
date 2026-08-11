@@ -302,9 +302,17 @@ export class AiSystem {
       if (!e || !e.origin || e.weapon === 'ai_rifle') return; // ignore our own
       // A gunshot is the loudest thing in the level: everybody hears it, and
       // anyone near the line of fire also feels suppressed by it.
+      /**
+       * `loudness` comes from the shooter's muzzle device (weapons/muzzles.js).
+       * It used to be a flat 90 for every shot, which made a suppressor purely
+       * cosmetic — the whole garrison converged on a suppressed shot exactly as
+       * it did on a braked one. 26 m is inside one building rather than across
+       * the map.
+       */
+      const loud = e.loudness ?? 90;
       for (const a of this.agents) {
         if (!a.alive) continue;
-        a.hear(e.origin, 90);
+        a.hear(e.origin, loud);
         if (e.dir) {
           const d = this._distanceToRay(a.position, e.origin, e.dir, a.eyeHeight);
           if (d < 2.6) a.suppress(0.45 * (1 - d / 2.6) + 0.12);

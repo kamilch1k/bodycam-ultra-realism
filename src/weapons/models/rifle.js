@@ -1,5 +1,6 @@
 import { Assembly, box, blob, dome, extrude, roundRect, latheZ, rodZ, mergeAll } from '../geometry.js';
 import { buildOpticSet } from '../optics.js';
+import { buildMuzzleSet } from '../muzzles.js';
 import {
   addBarrel,
   addGasBlock,
@@ -152,7 +153,13 @@ export function buildRifle() {
     w: 0.021,
     h: 0.0195,
   });
-  const muzzle = addMuzzleDevice(body, 'steel_soot', 'cavity', 'brake', zBarrelEnd, 0.0077, bore);
+  /**
+   * MUZZLE DEVICES ARE NOT PART OF THE BODY — same reasoning as the optics.
+   * `brake` stays the default, so the muzzle node and everything hanging off it
+   * (flash, smoke, tracer origin) is unchanged until the player fits something.
+   */
+  const muzzles = buildMuzzleSet({ zBarrelEnd, rBarrel: 0.0077, bore });
+  const muzzle = { len: 0.062, crownZ: muzzles.brake.crownZ };
 
   // ---- handguard + rails ---------------------------------------------------
   /**
@@ -348,6 +355,7 @@ export function buildRifle() {
     fxClass: 'carbine',
     body,
     optics,
+    muzzles,
     moving: { magazine, charging, bolt, trigger, selector },
     nodes: {
       muzzle: [0, bore, muzzle.crownZ],

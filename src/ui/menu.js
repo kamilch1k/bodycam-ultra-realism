@@ -1,5 +1,15 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
 import { OPTIC_ORDER } from '../weapons/optics.js';
+import { MUZZLE_ORDER } from '../weapons/muzzles.js';
+
+/** Short labels for the segmented control; full names live in muzzles.js. */
+const MUZZLE_LABELS = {
+  bare: 'bare',
+  a2: 'a2',
+  brake: 'brake',
+  comp: 'comp',
+  can: 'can',
+};
 
 /** Short enough to fit a segmented control; the full names live in optics.js. */
 const OPTIC_LABELS = {
@@ -86,6 +96,23 @@ export class PauseMenu {
       this.opticBtns.push([b, id]);
     }
     this.opticNote = el('div', 'val', this.opticRow, '');
+
+    // ---- muzzle device ----------------------------------------------------
+    // Same build-all/toggle scheme as the optic; the note shows how far the
+    // fitted device carries, because that is the stat the choice is about.
+    this.muzzleRow = this._row('Muzzle');
+    const mSeg = el('div', 'ow-seg', this.muzzleRow);
+    this.muzzleBtns = [];
+    for (const id of MUZZLE_ORDER) {
+      const b = el('button', null, mSeg, MUZZLE_LABELS[id]);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        this.ctx.peek('weapons')?.setMuzzle?.(id);
+        this.syncFromConfig();
+      });
+      this.muzzleBtns.push([b, id]);
+    }
+    this.muzzleNote = el('div', 'val', this.muzzleRow, '');
 
     // ---- advanced graphics ------------------------------------------------
     /**
@@ -284,6 +311,14 @@ export class PauseMenu {
         range ? `${wp.adsMagnification.toFixed(1)}x · wheel` : ''
       );
     }
+    const fittedM = wp?.muzzleId ?? null;
+    for (const [b, id] of this.muzzleBtns ?? []) {
+      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.muzzles?.[id];
+      b.classList.toggle('on', fittedM === id);
+      b.disabled = !has;
+      setStyle(b, 'opacity', has ? '' : '0.35');
+    }
+    if (this.muzzleNote) setText(this.muzzleNote, wp?.muzzle ? `heard ${wp.muzzle.loudness} m` : '');
     for (const f of this.featBtns ?? []) {
       const st = this._featureState(f.key);
       for (const [b, v] of f.pair) {

@@ -109,6 +109,14 @@ export class WeaponSystem {
       intensity: 0.42,
       light: 0.55,
       flashScale: 0.55,
+      /**
+       * How far this shot can be HEARD, in metres.
+       *
+       * `ai` used a flat 90 for every gunshot, which made a suppressor pure
+       * decoration — fitting one changed the picture and nothing else. Carrying
+       * the radius on the event is what lets the device be worth its downsides.
+       */
+      loudness: 105,
     };
     this._reloadPayload = { weapon: null, phase: 'start' };
     // `weapon:shell` carries the canonical { position, velocity } plus the real
@@ -320,6 +328,27 @@ export class WeaponSystem {
     const ids = this.weaponIds;
     const i = ids.indexOf(this.activeId);
     return this.setWeapon(ids[(i + 1) % ids.length]);
+  }
+
+  /* ---- muzzle devices ---------------------------------------------------- */
+
+  /** The fitted device's spec, or null before weapons has finished init. */
+  get muzzle() {
+    return this.viewmodel?.muzzleSpec(this.activeId) ?? null;
+  }
+
+  get muzzleId() {
+    return this.viewmodel?.weapons.get(this.activeId)?.muzzleId ?? null;
+  }
+
+  /**
+   * Fit a muzzle device to the ACTIVE weapon. Visibility only, but it also
+   * moves the muzzle node — see `Viewmodel.setMuzzle`.
+   */
+  setMuzzle(muzzleId) {
+    if (!this.viewmodel.setMuzzle(this.activeId, muzzleId)) return false;
+    this.ctx.events.emit('weapon:muzzle', { weapon: this.activeId, muzzle: muzzleId });
+    return true;
   }
 
   /* ---- optics ----------------------------------------------------------- */
@@ -773,6 +802,15 @@ export class WeaponSystem {
       vm.boreDir(this._firePayload.dir);
       this._firePayload.weapon = def;
       this._firePayload.seed = this._fireSeed >>> 0;
+      /**
+       * The fitted device drives both how far the shot carries and how big the
+       * flash is. A suppressor is 26 m and an eighth of the flash; a brake is
+       * 120 m and more of it than a bare muzzle.
+       */
+      const dev = this.viewmodel.muzzleSpec(this.activeId);
+      this._firePayload.loudness = dev?.loudness ?? 105;
+      this._firePayload.flashScale = 0.55 * (dev?.flashScale ?? 1);
+      this._firePayload.light = 0.55 * (dev?.flashScale ?? 1);
       for (let i = 0; i < this._pendingShots; i++) {
         ctx.events.emit('weapon:fire', this._firePayload);
       }
