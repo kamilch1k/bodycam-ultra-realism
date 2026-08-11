@@ -130,6 +130,8 @@ vm.setActive(WEAPON);
 if (params.get('optic')) vm.setOptic(WEAPON, params.get('optic'));
 if (params.get('muzzle')) vm.setMuzzle(WEAPON, params.get('muzzle'));
 if (params.get('mag')) vm.setMag(WEAPON, params.get('mag'));
+if (params.get('stock')) vm.setStock(WEAPON, params.get('stock'));
+if (params.get('skin')) vm.setSkin(WEAPON, params.get('skin'));
 if (!ARMS) {
   vm.armL.root.visible = false;
   vm.armR.root.visible = false;

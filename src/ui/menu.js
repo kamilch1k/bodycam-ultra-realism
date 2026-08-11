@@ -3,6 +3,7 @@ import { OPTIC_ORDER } from '../weapons/optics.js';
 import { MUZZLE_ORDER } from '../weapons/muzzles.js';
 import { MAG_ORDER } from '../weapons/mags.js';
 import { STOCK_ORDER } from '../weapons/stocks.js';
+import { SKIN_ORDER, SKINS } from '../weapons/skins.js';
 
 /** Short labels for the segmented control; full names live in stocks.js. */
 const STOCK_LABELS = { collapsed: 'short', standard: 'std', extended: 'long' };
@@ -151,6 +152,20 @@ export class PauseMenu {
       this.stockBtns.push([b, id]);
     }
     this.stockNote = el('div', 'val', this.stockRow, '');
+
+    // ---- skin -------------------------------------------------------------
+    this.skinRow = this._row('Finish');
+    const kSeg = el('div', 'ow-seg', this.skinRow);
+    this.skinBtns = [];
+    for (const id of SKIN_ORDER) {
+      const b = el('button', null, kSeg, SKINS[id].label);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        this.ctx.peek('weapons')?.setSkin?.(id);
+        this.syncFromConfig();
+      });
+      this.skinBtns.push([b, id]);
+    }
 
     // ---- advanced graphics ------------------------------------------------
     /**
@@ -379,6 +394,8 @@ export class PauseMenu {
       const st = wp?.stockSpec;
       setText(this.stockNote, st ? `recoil x${st.recoil.toFixed(2)}` : '');
     }
+    const fittedK = wp?.skinId ?? 'black';
+    for (const [b, id] of this.skinBtns ?? []) b.classList.toggle('on', fittedK === id);
     for (const f of this.featBtns ?? []) {
       const st = this._featureState(f.key);
       for (const [b, v] of f.pair) {

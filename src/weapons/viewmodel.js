@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Arm, HAND_POSES } from './hands.js';
 import { buildClips, makeSampleResult } from './clips.js';
 import { triCount, mergeAll } from './geometry.js';
+import { SKINS, UNPAINTED } from './skins.js';
 import {
   Spring,
   Spring3,
@@ -397,6 +398,8 @@ export class Viewmodel {
           });
         }
         const mesh = new THREE.Mesh(geo, this.mats.get(matKey));
+        // Skins tint by material class, so the class has to survive the merge.
+        mesh.userData.matKey = matKey;
         mesh.name = `${asm.name}-${matKey}`;
         // The viewmodel does not cast into the cascades (it is not in the world
         // scene), but it absolutely must RECEIVE the sun shadow: without this the
@@ -542,6 +545,7 @@ export class Viewmodel {
       magId: null,
       stocks,
       stockId: null,
+      skinId: 'black',
     };
     this._fitSupportHand(entry);
     this.weapons.set(model.id, entry);
@@ -628,6 +632,56 @@ export class Viewmodel {
     if (!spec) return false;
     for (const [name, st] of Object.entries(w.stocks)) st.group.visible = name === stockId;
     w.stockId = stockId;
+    return true;
+  }
+
+  /**
+   * Apply a skin to a weapon.
+   *
+   * Materials are CACHED AND SHARED across all three weapons — `mats.get('polymer')`
+   * hands the same instance to the rifle, the SMG and the pistol — so tinting one
+   * in place would repaint the whole armoury. Each weapon therefore gets its own
+   * clone of every material class it uses, made once on the first skin change and
+   * reused after. A clone shares the program and the maps, so this costs uniforms
+   * and nothing else: no recompile, no extra draw calls.
+   *
+   * The original albedo is captured on that first clone and every skin multiplies
+   * FROM it, so skins never compound and there is no "reset" special case.
+   *
+   * @returns {boolean} false if there is no such skin
+   */
+  setSkin(weaponId, skinId) {
+    const w = this.weapons.get(weaponId);
+    const skin = SKINS[skinId];
+    if (!w || !skin) return false;
+    if (!w._skinMats) w._skinMats = new Map();
+
+    w.group.traverse((o) => {
+      const key = o.userData?.matKey;
+      if (!o.isMesh || !key) return;
+      let rec = w._skinMats.get(key);
+      if (!rec) {
+        // Leave glass, lens coatings and bore cavities alone: they are optical,
+        // not painted, and tinting them turns the sight picture green.
+        if (UNPAINTED.has(key)) {
+          w._skinMats.set(key, null);
+          return;
+        }
+        const mat = o.material.clone();
+        rec = { mat, base: mat.color.clone() };
+        w._skinMats.set(key, rec);
+      }
+      if (!rec) return;
+      o.material = rec.mat;
+    });
+
+    for (const rec of w._skinMats.values()) {
+      if (!rec) continue;
+      const t = skin.tint;
+      rec.mat.color.setRGB(rec.base.r * t[0], rec.base.g * t[1], rec.base.b * t[2]);
+      rec.mat.needsUpdate = true;
+    }
+    w.skinId = skinId;
     return true;
   }
 

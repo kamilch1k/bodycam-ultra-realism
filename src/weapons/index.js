@@ -378,6 +378,19 @@ export class WeaponSystem {
     s.mag = Math.min(s.mag, s.def.magSize);
   }
 
+  /* ---- skins -------------------------------------------------------------- */
+
+  get skinId() {
+    return this.viewmodel?.weapons.get(this.activeId)?.skinId ?? 'black';
+  }
+
+  /** Repaint the ACTIVE weapon. Purely cosmetic — no stat touches this. */
+  setSkin(skinId) {
+    if (!this.viewmodel.setSkin(this.activeId, skinId)) return false;
+    this.ctx.events.emit('weapon:skin', { weapon: this.activeId, skin: skinId });
+    return true;
+  }
+
   /* ---- stocks ------------------------------------------------------------ */
 
   get stockSpec() {
