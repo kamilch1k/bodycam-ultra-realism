@@ -15,10 +15,13 @@ import { AudioSystem } from './audio/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
-import { showMainMenu, showLoading, MAPS } from './ui/mainmenu.js';
+import { showMainMenu, showLoading } from './ui/mainmenu.js';
 import { portal } from './core/portal.js';
 import { TouchControls, isTouchDevice } from './core/touch.js';
 import { AimAssist } from './player/assist.js';
+import { setLang, t } from './core/i18n.js';
+import { loadCareer, bankSession } from './core/save.js';
+import { armFirstGesture } from './core/fullscreen.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -52,6 +55,15 @@ const lockstep = capture && params.get('lockstep') === '1';
  */
 await portal.init();
 
+/**
+ * Language and career must both be settled BEFORE the menu paints: the menu
+ * shows rank and progress, and Yandex requires the language come from the SDK
+ * rather than from a picker. `?lang=` overrides for testing the RU build without
+ * a Russian browser.
+ */
+setLang(params.get('lang') ?? portal.lang);
+await loadCareer();
+
 const skipMenu = capture || params.has('map') || params.get('menu') === '0';
 const choice = skipMenu
   ? { map: params.get('map') ?? DEFAULTS.map, mode: params.get('mode') ?? DEFAULTS.mode }
@@ -60,7 +72,7 @@ const choice = skipMenu
 // Put the loading screen up and let it actually paint before anything blocks:
 // engine.init() holds the main thread, so a frame has to land first or the
 // overlay never appears.
-const loading = skipMenu ? null : showLoading(MAPS.find((m) => m.id === choice.map)?.name ?? choice.map);
+const loading = skipMenu ? null : showLoading(t(`map.${choice.map}`));
 if (loading) {
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
@@ -195,6 +207,13 @@ if (touchMode) {
   // The overlay must not sit over the pause menu — it would eat every tap.
   engine.events.on('ui:pause', ({ paused }) => controls.setVisible(!paused));
   window.__TOUCH__ = controls;
+  /**
+   * Covers the deep-link path. The menu's Play button is normally the gesture
+   * that buys fullscreen, but `?map=` skips the menu entirely and Yandex still
+   * requires a mobile game to be fullscreen during gameplay — so on that path
+   * the first tap has to do it instead.
+   */
+  if (skipMenu) armFirstGesture();
 }
 
 engine.start();
@@ -212,14 +231,16 @@ loading?.done();
  */
 portal.onPause = () => {
   portal.gameplayStop();
-  const t = engine.ctx.time;
-  portal._adScale = t.scale;
-  t.scale = 0;
+  // `time`, not `t` — `t` is the i18n lookup at module scope and shadowing it
+  // here reads like a bug even though it is not one.
+  const time = engine.ctx.time;
+  portal._adScale = time.scale;
+  time.scale = 0;
   engine.ctx.peek('audio')?.setMasterVolume?.(0);
 };
 portal.onResume = () => {
-  const t = engine.ctx.time;
-  t.scale = portal._adScale ?? 1;
+  const time = engine.ctx.time;
+  time.scale = portal._adScale ?? 1;
   engine.ctx.peek('audio')?.setMasterVolume?.(1);
   if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
 };
@@ -235,9 +256,67 @@ engine.events.on('ui:pause', ({ paused }) => {
   if (paused) portal.gameplayStop();
   else portal.gameplayStart();
 });
+/**
+ * Bank on pause as well as on leaving. Without this an unlock earned during a
+ * session would not appear until the player closed the tab and came back, so the
+ * pause menu — the one place the loadout lives — would show the reward a whole
+ * session late. `bank()` is declared below and hoisted.
+ */
+engine.events.on('ui:pause', ({ paused }) => {
+  if (paused) bank();
+});
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) portal.gameplayStop();
   else if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
+});
+
+/**
+ * CAREER BANKING.
+ *
+ * There is no round end to hang this off — a TDM match here runs until the
+ * player leaves — so the session is banked when the tab goes away. `pagehide`
+ * plus `visibilitychange` is the pair that actually covers mobile: iOS Safari
+ * frequently never fires `pagehide` when the app is backgrounded or the tab is
+ * discarded, and `beforeunload` is unreliable on every mobile browser. Banking
+ * is idempotent through `_banked`, so firing both costs nothing.
+ *
+ * A kill is a `damage:dealt` with `killed` whose target is NOT the player —
+ * enemies killing each other in a crossfire are somebody's kill, but not ours.
+ */
+const session = { kills: 0, streak: 0, best: 0, start: performance.now() };
+engine.events.on('damage:dealt', (e) => {
+  if (!e?.killed) return;
+  const target = e.target;
+  const isPlayer = target === 'player' || target === engine.ctx.peek('player') || target?.isPlayer === true;
+  if (isPlayer) {
+    session.streak = 0;
+    return;
+  }
+  session.kills++;
+  session.streak++;
+  if (session.streak > session.best) session.best = session.streak;
+});
+
+/**
+ * Idempotent through the zero-kill guard rather than a one-shot flag: a player
+ * who tabs away and comes back must keep earning, so what is banked is drained
+ * instead of latched. The live streak survives the drain — the player is still
+ * alive and still on it.
+ */
+function bank() {
+  if (session.kills === 0) return;
+  bankSession({
+    kills: session.kills,
+    best: session.best,
+    seconds: (performance.now() - session.start) / 1000,
+  });
+  session.kills = 0;
+  session.best = session.streak;
+  session.start = performance.now();
+}
+addEventListener('pagehide', bank);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) bank();
 });
 
 

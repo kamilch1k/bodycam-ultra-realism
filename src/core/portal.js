@@ -143,6 +143,74 @@ class Portal {
   }
 
   /**
+   * The language the portal wants the game in.
+   *
+   * Yandex requires the game to pick this up itself rather than asking; the
+   * value is on the environment object the SDK returns from init. CrazyGames has
+   * no equivalent, so the browser's own language stands in there.
+   *
+   * @returns {string|null} a two-letter code, or null to fall back to navigator
+   */
+  get lang() {
+    if (this.target === 'yandex') return this.sdk?.environment?.i18n?.lang ?? null;
+    return null;
+  }
+
+  /**
+   * Cross-device save slot. Both portals offer one and neither is localStorage:
+   * Yandex hangs it off a player object that must be fetched first, CrazyGames
+   * exposes a synchronous module that only exists once their SDK is up.
+   *
+   * Never throws and never rejects — a portal save is a mirror of localStorage
+   * (see save.js), so every failure here is survivable and none of them should
+   * be a branch the caller has to write.
+   */
+  async _player() {
+    if (this.target !== 'yandex' || !this.sdk) return null;
+    if (this._playerObj === undefined) {
+      try {
+        // `scopes: false` asks for storage WITHOUT forcing a login prompt, which
+        // Yandex certification treats as required-third-party-auth if it blocks.
+        this._playerObj = await this.sdk.getPlayer({ scopes: false });
+      } catch {
+        this._playerObj = null;
+      }
+    }
+    return this._playerObj;
+  }
+
+  /** @returns {Promise<any|null>} */
+  async getData(key) {
+    if (!this.sdk) return null;
+    try {
+      if (this.target === 'yandex') {
+        const p = await this._player();
+        const all = await p?.getData([key]);
+        return all?.[key] ?? null;
+      }
+      const raw = this.sdk.data?.getItem?.(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      console.warn('[portal] getData()', err);
+      return null;
+    }
+  }
+
+  /** Fire-and-forget: the caller has already written to localStorage. */
+  setData(key, value) {
+    if (!this.sdk) return;
+    try {
+      if (this.target === 'yandex') {
+        this._player().then((p) => p?.setData({ [key]: value }, false)).catch(() => {});
+      } else {
+        this.sdk.data?.setItem?.(key, JSON.stringify(value));
+      }
+    } catch (err) {
+      console.warn('[portal] setData()', err);
+    }
+  }
+
+  /**
    * Show an interstitial.
    *
    * Both portals require the game to go QUIET AND STILL for the duration — an

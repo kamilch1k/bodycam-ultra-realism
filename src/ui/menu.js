@@ -4,6 +4,8 @@ import { MUZZLE_ORDER } from '../weapons/muzzles.js';
 import { MAG_ORDER } from '../weapons/mags.js';
 import { STOCK_ORDER } from '../weapons/stocks.js';
 import { SKIN_ORDER, SKINS } from '../weapons/skins.js';
+import { t } from '../core/i18n.js';
+import { isUnlocked, unlockPrice } from '../core/save.js';
 
 /** Short labels for the segmented control; full names live in stocks.js. */
 const STOCK_LABELS = { collapsed: 'short', standard: 'std', extended: 'long' };
@@ -66,8 +68,7 @@ export class PauseMenu {
     this.root = el('div', 'ow-menu', parent);
     const inner = el('div', 'ow-menu-inner', this.root);
 
-    const h = el('h1', null, inner, 'Paused');
-    h.textContent = 'PAUSED';
+    el('h1', null, inner, t('menu.paused'));
     el('div', 'sub', inner, 'HOTLINE STRIKE — RAPID RESPONSE');
     el('div', 'rule', inner);
 
@@ -255,7 +256,7 @@ export class PauseMenu {
 
     // ---- buttons ---------------------------------------------------------
     const btns = el('div', 'ow-btns', inner);
-    this.resumeBtn = el('button', 'ow-btn primary', btns, 'Resume');
+    this.resumeBtn = el('button', 'ow-btn primary', btns, t('menu.resume'));
     this.resumeBtn.type = 'button';
     this.resumeBtn.addEventListener('click', () => this.close());
     const reset = el('button', 'ow-btn', btns, 'Defaults');
@@ -423,24 +424,57 @@ export class PauseMenu {
     // must land on the setting, not be swallowed by a re-lock.
     if (this.ctx.input) this.ctx.input.lockSuppressed = true;
     document.exitPointerLock?.();
-    const t = this.ctx.time;
-    if (t) {
-      this._prevScale = t.scale;
-      t.scale = 0;
+    const time = this.ctx.time;
+    if (time) {
+      this._prevScale = time.scale;
+      time.scale = 0;
     }
     this.ctx.peek('player')?.setControlEnabled?.(false);
     this.ctx.events.emit('ui:pause', { paused: true });
+    /**
+     * AFTER the emit, deliberately. main.js banks the session on `ui:pause`, and
+     * the bus is synchronous — so by this line the kills from the last minute are
+     * in the career and an unlock earned during it shows up on the menu that is
+     * opening right now. Gating before the emit read a career one pause stale.
+     */
+    this._applyUnlocks();
   }
 
   close() {
     if (!this.open) return;
     this.open = false;
-    const t = this.ctx.time;
-    if (t) t.scale = this._prevScale ?? 1;
+    const time = this.ctx.time;
+    if (time) time.scale = this._prevScale ?? 1;
     this.ctx.peek('player')?.setControlEnabled?.(true);
     if (this.ctx.input) this.ctx.input.lockSuppressed = false;
     this.ctx.input?.requestPointerLock?.();
     this.ctx.events.emit('ui:pause', { paused: false });
+  }
+
+  /**
+   * Grey out attachments the career has not earned yet.
+   *
+   * `disabled` rather than a click guard: a disabled button emits no click at
+   * all, so the four existing handlers stay exactly as they were and there is no
+   * second place for the rule to be got wrong. The tooltip carries the price,
+   * because a locked control with no stated cost reads as broken.
+   */
+  _applyUnlocks() {
+    const slots = [
+      ['muzzle', this.muzzleBtns],
+      ['mag', this.magBtns],
+      ['stock', this.stockBtns],
+      ['skin', this.skinBtns],
+    ];
+    for (const [slot, btns] of slots) {
+      for (const [b, id] of btns) {
+        const ok = isUnlocked(slot, id);
+        b.disabled = !ok;
+        b.classList.toggle('locked', !ok);
+        if (ok) b.removeAttribute('title');
+        else b.title = t('menu.locked.at', { n: unlockPrice(slot, id) });
+      }
+    }
   }
 
   /** Driven with unscaled time so the fade still runs while the game is frozen. */

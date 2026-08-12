@@ -53,6 +53,9 @@ const CSS = `
 .ht-reload{right:24px;bottom:132px;width:66px;height:66px}
 .ht-jump{right:112px;bottom:140px;width:60px;height:60px}
 .ht-crouch{right:36px;bottom:210px;width:60px;height:60px}
+/* Top-left, diagonally opposite the fire button and outside both thumb arcs —
+   pause is the one control that must never be hit by accident mid-firefight. */
+.ht-pause{left:14px;top:14px;width:46px;height:46px;font-size:15px}
 @media (max-height:420px){
   .ht-fire{width:84px;height:84px}
   .ht-ads{right:110px;width:64px;height:64px}
@@ -92,7 +95,8 @@ export class TouchControls {
       <button class="ht-btn ht-ads z" type="button">Aim</button>
       <button class="ht-btn ht-reload z" type="button">R</button>
       <button class="ht-btn ht-jump z" type="button">Jump</button>
-      <button class="ht-btn ht-crouch z" type="button">Duck</button>`;
+      <button class="ht-btn ht-crouch z" type="button">Duck</button>
+      <button class="ht-btn ht-pause z" type="button" aria-label="Pause">II</button>`;
     host.appendChild(root);
     this.root = root;
 
@@ -112,6 +116,12 @@ export class TouchControls {
     this._bindButton('.ht-reload', 'KeyR');
     this._bindButton('.ht-jump', 'Space');
     this._bindButton('.ht-crouch', 'ControlLeft', true);
+    /**
+     * The only way into the pause menu on a phone. Escape was it before, and a
+     * touch device has no Escape — so settings, sensitivity and the loadout were
+     * all unreachable on the exact platform this build is FOR.
+     */
+    this._bindButton('.ht-pause', 'Escape');
   }
 
   _bindStick() {
@@ -198,25 +208,36 @@ export class TouchControls {
    */
   _bindButton(sel, code, toggle = false) {
     const b = this.root.querySelector(sel);
-    const down = this.input.down;
+    const inp = this.input;
+    /**
+     * Queue through `_pendingDown`/`_pendingUp`, NOT straight into `input.down`.
+     *
+     * `beginFrame` is what turns a pending code into a press EDGE, and the edge
+     * is the only thing `actionPressed` can see. Writing into `down` directly
+     * skips that step entirely, so a held state (aim, crouch) worked but every
+     * edge-triggered action silently did nothing — which is why the touch reload
+     * button did nothing at all: weapons reads `actionPressed('reload')`, and
+     * that set was never populated. Same reason a pause button was impossible
+     * before this change.
+     */
     if (toggle) {
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        const on = !down.has(code);
-        if (on) down.add(code);
-        else down.delete(code);
+        const on = !inp.down.has(code);
+        if (on) inp._pendingDown.add(code);
+        else inp._pendingUp.add(code);
         b.classList.toggle('on', on);
       });
       return;
     }
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      down.add(code);
+      inp._pendingDown.add(code);
       b.classList.add('on');
     });
     const up = (e) => {
       e.preventDefault();
-      down.delete(code);
+      inp._pendingUp.add(code);
       b.classList.remove('on');
     };
     b.addEventListener('pointerup', up);

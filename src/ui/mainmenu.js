@@ -16,38 +16,18 @@
  * thread that is not running.
  */
 
-export const MAPS = [
-  {
-    id: 'street',
-    name: 'Market Street',
-    blurb: 'Full production map — buildings, interiors, props. Slow to load.',
-  },
-  {
-    id: 'yard',
-    name: 'The Yard',
-    blurb: 'Compact open arena, one central block to circle. Instant fights.',
-  },
-  {
-    id: 'depot',
-    name: 'Depot',
-    blurb: 'Indoor crate aisles and two offices. Loads fast.',
-  },
-  {
-    id: 'swat',
-    name: 'Shoot House',
-    blurb: 'Close-quarters kill house — six rooms off one corridor. Loads fast.',
-  },
-  {
-    id: 'box',
-    name: 'Whitebox Arena',
-    blurb: 'Greybox testbed. Loads about twice as fast.',
-  },
-];
+import { t, rankName } from '../core/i18n.js';
+import { career, level, nextUnlock } from '../core/save.js';
+import * as fs from '../core/fullscreen.js';
 
-export const MODES = [
-  { id: 'tdm', name: 'Team Deathmatch', blurb: 'Two enemy squads garrison the level.' },
-  { id: 'sandbox', name: 'Free Roam', blurb: 'No enemies. For testing movement and weapons.' },
-];
+/**
+ * Names and blurbs are i18n KEYS resolved at paint time, not strings: the
+ * language is not known when this module is evaluated, only after the portal
+ * SDK has answered.
+ */
+export const MAPS = [{ id: 'street' }, { id: 'yard' }, { id: 'depot' }, { id: 'swat' }, { id: 'box' }];
+
+export const MODES = [{ id: 'tdm' }, { id: 'sandbox' }];
 
 const CSS = `
 .ow-fe{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
@@ -82,6 +62,15 @@ const CSS = `
   animation:ow-slide 1.15s linear infinite}
 @keyframes ow-slide{from{transform:translateX(-110%)}to{transform:translateX(370%)}}
 .ow-load .ow-what{font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:#6f7a88}
+.ow-fe .ow-career{display:flex;gap:2rem;align-items:center;flex-wrap:wrap;
+  justify-content:center;padding:.7rem 1.4rem;border:1px solid #232c38;border-radius:8px;
+  background:rgba(13,18,25,.6)}
+.ow-fe .ow-career div{text-align:center}
+.ow-fe .ow-career k{display:block;font-size:10px;letter-spacing:.22em;text-transform:uppercase;
+  color:#6f7a88;margin-bottom:.25rem}
+.ow-fe .ow-career v{display:block;font-size:15px;font-weight:600;color:#dbe3ec}
+.ow-fe .ow-fsbtn{position:fixed;top:14px;right:16px;width:auto;margin:0;padding:.45rem .8rem;
+  font-size:11px;letter-spacing:.14em;text-transform:uppercase}
 `;
 
 function el(html) {
@@ -103,28 +92,44 @@ export function showMainMenu(initial = {}) {
   let map = MAPS.some((m) => m.id === initial.map) ? initial.map : MAPS[0].id;
   let mode = MODES.some((m) => m.id === initial.mode) ? initial.mode : MODES[0].id;
 
-  const list = (items, sel) =>
+  const list = (items, sel, prefix) =>
     items
       .map(
         (o) =>
           `<button type="button" data-id="${o.id}" aria-pressed="${o.id === sel}">
-             <b>${o.name}</b><i>${o.blurb}</i>
+             <b>${t(`${prefix}.${o.id}`)}</b><i>${t(`${prefix}.${o.id}.blurb`)}</i>
            </button>`
       )
       .join('');
 
+  const c = career();
+  const next = nextUnlock();
+  const stat = (k, v) => `<div><k>${k}</k><v>${v}</v></div>`;
+  const touch = matchMedia?.('(pointer: coarse)')?.matches;
+
   const root = el(`
     <div class="ow-fe">
-      <h1>Hotline Strike<span>Rapid Response</span></h1>
-      <div class="ow-cols">
-        <div class="ow-col" id="ow-maps"><h2>Map</h2>${list(MAPS, map)}</div>
-        <div class="ow-col" id="ow-modes"><h2>Game mode</h2>${list(MODES, mode)}</div>
+      <h1>Hotline Strike<span>${t('menu.subtitle')}</span></h1>
+      <div class="ow-career">
+        ${stat(t('career.rank'), rankName(level()))}
+        ${stat(t('career.kills'), c.kills)}
+        ${stat(t('career.best'), c.best)}
+        ${stat(
+          t('career.next'),
+          next ? t('career.next.at', { n: next.at - c.kills }) : t('career.complete')
+        )}
       </div>
-      <button type="button" class="ow-play">Play</button>
-      <div class="ow-foot">WASD move · Mouse aim · Shift sprint · R reload · Esc pause</div>
+      <div class="ow-cols">
+        <div class="ow-col" id="ow-maps"><h2>${t('menu.map')}</h2>${list(MAPS, map, 'map')}</div>
+        <div class="ow-col" id="ow-modes"><h2>${t('menu.mode')}</h2>${list(MODES, mode, 'mode')}</div>
+      </div>
+      <button type="button" class="ow-play">${t('menu.play')}</button>
+      <div class="ow-foot">${t(touch ? 'menu.controls.touch' : 'menu.controls')}</div>
+      ${fs.supported() ? `<button type="button" class="ow-fsbtn">${t('menu.fullscreen')}</button>` : ''}
     </div>
   `);
   document.body.appendChild(root);
+  root.querySelector('.ow-fsbtn')?.addEventListener('click', () => fs.toggle());
 
   const pick = (container, onPick) => {
     container.addEventListener('click', (e) => {
@@ -141,6 +146,14 @@ export function showMainMenu(initial = {}) {
 
   return new Promise((resolve) => {
     const go = () => {
+      /**
+       * Play is the last user gesture before the match, and a gesture is the only
+       * moment a browser will grant fullscreen. On touch that is not optional:
+       * Yandex requires the game to already BE fullscreen during gameplay, and
+       * the browser chrome otherwise eats the thumb rests. Deliberately not
+       * awaited — a device that refuses must still start the match.
+       */
+      if (matchMedia?.('(pointer: coarse)')?.matches) fs.request();
       root.remove();
       resolve({ map, mode });
     };
@@ -160,9 +173,9 @@ export function showMainMenu(initial = {}) {
 export function showLoading(mapName) {
   const root = el(`
     <div class="ow-fe ow-load">
-      <div class="ow-what">Loading ${mapName}</div>
+      <div class="ow-what">${t('load.loading')} ${mapName}</div>
       <div class="ow-bar"><i></i></div>
-      <div class="ow-foot">Generating textures, geometry and shaders — nothing is downloaded.</div>
+      <div class="ow-foot">${t('load.note')}</div>
     </div>
   `);
   document.body.appendChild(root);

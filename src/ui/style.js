@@ -643,6 +643,14 @@ const CSS = `
 .ow-seg button:last-child { border-right:1px solid var(--hair); }
 .ow-seg button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
 .ow-seg button.on { color:#0b0d0f; background: var(--ink); }
+/* Career-locked attachment: readable, obviously inert, and it keeps its width so
+   unlocking something never reflows the row it sits in. */
+.ow-seg button.locked { opacity:.34; cursor:not-allowed; }
+.ow-seg button.locked:hover { color: var(--ink-2); background: rgba(255,255,255,.03); }
+.ow-seg button.locked::after {
+  content:''; position:absolute; left:12%; right:12%; top:50%; height:1px;
+  background: var(--ink-2); opacity:.7;
+}
 .ow-slider { position:relative; width: calc(190px * var(--k)); height: calc(18px * var(--k)); }
 .ow-slider .track {
   position:absolute; left:0; right:0; top:50%; height: calc(2px * var(--k));
