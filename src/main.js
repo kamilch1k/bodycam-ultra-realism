@@ -265,6 +265,16 @@ if (lockstep) {
 
 window.__ENGINE__ = engine;
 
+/**
+ * Time-to-playable, measured from navigation start — the one number both
+ * portals grade on (CrazyGames: <=20 s hard, <10 s to hit their conversion
+ * benchmark). It has to be read on REAL hardware: most of boot is the material
+ * generator rendering to WebGLRenderTargets, and a headless/software rasterizer
+ * inflates exactly that, so the harness number is an upper bound, not a
+ * measurement. ponytail: console.log, not a HUD — this is a dev instrument.
+ */
+console.log(`[boot] playable in ${Math.round(performance.now())} ms`);
+
 if (import.meta.hot) {
   import.meta.hot.dispose(() => engine.dispose());
 }
