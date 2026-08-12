@@ -152,13 +152,41 @@ export class HazeSystem {
    * which is what puts the right colour space in the cache key — see
    * FxSystem.prewarmMaterials().
    */
-  prewarm(renderer) {
+  /**
+   * @param {THREE.WebGLRenderer} renderer
+   * @param {THREE.WebGLRenderTarget|null} output  the target the warp pass writes
+   *        to at runtime
+   *
+   * Compiles against the REAL targets — the sprite pass draws into a half-float
+   * RG target and the warp quad into the HDR chain, not into the 1x1 RGBA8
+   * scratch the caller happens to have bound. Three folds the bound target into
+   * the program cache key, so this is the correct thing to compile against.
+   *
+   * HONEST STATUS: this did NOT fix the first-shot hitch. `fx-distort` and
+   * `fx-haze-warp` are still built on the first two frames of a held trigger
+   * (reproducible via tools/fire-stutter.mjs — frames 21 and 22, alongside 8
+   * geometries and 5 textures). The render-target cache key was a theory and the
+   * measurement refuted it. Something else about the runtime material state
+   * differs from what is compiled here and the cause is still open. Kept because
+   * compiling against the real target is right regardless, not because it works.
+   */
+  prewarm(renderer, output = null) {
     const cam = this._warmCam ?? (this._warmCam = new THREE.PerspectiveCamera());
+    const prev = renderer.getRenderTarget();
     try {
-      renderer.compile(this.scene, cam);
+      if (this.rt) {
+        renderer.setRenderTarget(this.rt);
+        renderer.compile(this.scene, cam);
+      }
+      // Bind the distortion texture the runtime pass samples, so the sampler is
+      // resolved the same way it will be in the fight.
+      if (this.rt) this.warp.uniforms.tDistort.value = this.rt.texture;
+      renderer.setRenderTarget(output);
       renderer.compile(this._quadScene, this._quadCam);
     } catch (err) {
       console.warn('[fx] haze prewarm failed', err);
+    } finally {
+      renderer.setRenderTarget(prev);
     }
   }
 

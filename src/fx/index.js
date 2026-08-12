@@ -324,7 +324,9 @@ export class FxSystem {
       }
       // The refraction sprites and the warp pass live in the haze system's own
       // private scenes, which no scene-graph walk from outside can reach.
-      this.hazeSys.prewarm(renderer);
+      // `prevRt` — the target the pipeline had bound before this hook swapped in
+      // its 1x1 scratch — is what the warp pass actually writes to in a frame.
+      this.hazeSys.prewarm(renderer, prevRt);
     } finally {
       renderer.setRenderTarget(prevRt, prevFace, prevMip);
       rt.dispose();
