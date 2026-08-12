@@ -107,15 +107,22 @@ export function buildOpticSet(o) {
    * receiver has a flat-top rail and does not need it.
    */
   {
+    /**
+     * A CIRCULAR sight, not an open reflex frame.
+     *
+     * The OKP-7 is a tube: you look through a round window, not over a flat
+     * plate. It was built with buildMiniReflex, which produces the rectangular
+     * open frame of a mini red dot, and that is simply the wrong sight. A short
+     * fat tube — 24 mm glass in a 40 mm body — is the read, and it sits lower
+     * and shorter than the reddot so the two are not the same object twice.
+     */
     const asm = new Assembly('optic-okp7');
-    const glass = buildMiniReflex(asm, {
-      w: 0.03 * k,
-      h: 0.026 * k,
-      len: 0.052 * k,
-      // An open reflex sits LOW — that is half its appeal. Its own return puts
-      // the glass centre 15 mm above this base.
-      y: railTop + 0.004,
-      z: z - 0.004,
+    const glass = buildOptic(asm, {
+      rTube: 0.0142 * k,
+      len: 0.04 * k,
+      y: opticY - 0.002,
+      z: z + 0.004,
+      railTop,
       matBody: 'alu_fine',
     });
     out.okp7 = {
@@ -123,7 +130,7 @@ export function buildOpticSet(o) {
       glass,
       mag: 1,
       magRange: null,
-      label: 'OKP-7 Reflex',
+      label: 'OKP-7',
       // An open frame has nothing to align but the dot, so it comes up faster
       // than a tube and slower than irons.
       adsScale: 0.95,

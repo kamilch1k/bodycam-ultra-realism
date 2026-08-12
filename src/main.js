@@ -153,10 +153,27 @@ const shotApi = installShotApi(engine, { capture, lockstep });
 // pre-warmed), or a pre-warm that runs incrementally across frames once the
 // game is already interactive. Both are bigger than a config change — see
 // CLAUDE_HANDOFF.md.
-const warmup =
-  params.get('prewarm') === '1'
-    ? await prewarm(engine)
-    : { ok: false, reason: 'off by default — ?prewarm=1 to compile everything up front' };
+/**
+ * PREWARM IS ON for the arcade maps and off for the street.
+ *
+ * It was disabled globally after it cost 47 s on the street map, whose material
+ * set is enormous — but that verdict was never re-measured against the greybox
+ * levels this game actually ships. On `yard` it costs 442 ms of boot (10,370 ->
+ * 10,812 ms) and compiles 54 extra programs, 49 -> 103.
+ *
+ * Those 54 are not free work avoided. They are programs that otherwise compile
+ * the first time you fire, the first time a round hits concrete, the first time
+ * a grenade goes off — one hitch each, mid-fight, on a phone. Paying for them
+ * behind the loading screen is the entire point of a prewarm.
+ *
+ * `?prewarm=0` forces it off, `?prewarm=1` forces it on even on the street.
+ */
+const prewarmParam = params.get('prewarm');
+const wantPrewarm =
+  prewarmParam === '1' || (prewarmParam !== '0' && config.map !== 'street');
+const warmup = wantPrewarm
+  ? await prewarm(engine)
+  : { ok: false, reason: `off for map "${config.map}" — ?prewarm=1 to force` };
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
 

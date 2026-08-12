@@ -271,6 +271,41 @@ export class Viewmodel {
     this.dotRing.visible = false;
     this.reticle.add(this.dotRim);
     this.reticle.add(this.dotCore);
+
+    /**
+     * GREEN CHEVRON with ranging points — the OKP-7's reticle.
+     *
+     * A Russian collimator does not show a red dot. It shows an illuminated
+     * green chevron with aiming points stepped below it: you hold the tip on a
+     * close target and drop to a lower point as range increases. Green because
+     * the eye is most sensitive there, which is why Warsaw Pact optics used it.
+     *
+     * Authored at UNIT radius like the dot and scaled by the same angular size,
+     * so both reticles are the same apparent size and swapping optics never
+     * changes how big the aiming mark reads.
+     */
+    const chevBars = [];
+    for (const side of [-1, 1]) {
+      const bar = new THREE.PlaneGeometry(2.9, 0.62);
+      bar.rotateZ(side * 0.62);
+      bar.translate(side * 1.0, 0.95, 0);
+      chevBars.push(bar);
+    }
+    // Two ranging points below the tip, stepped and shrinking with range.
+    for (let i = 0; i < 2; i++) {
+      const d = new THREE.CircleGeometry(0.58 - i * 0.12, 12);
+      d.translate(0, -2.1 - i * 2.1, 0);
+      chevBars.push(d);
+    }
+    const chevGeo = mergeAll(chevBars);
+    this._reticleGeo.push(chevGeo);
+    this.chevron = new THREE.Mesh(chevGeo, mats.reticle(0x2bff4a, 0.9));
+    this.chevron.renderOrder = 21;
+    this.chevron.visible = false;
+    this.chevron.frustumCulled = false;
+    this.chevron.userData.owNoPrepass = true;
+    this.chevron.userData.owNoShadow = true;
+    this.reticle.add(this.chevron);
     for (const m of [this.dotCore, this.dotHalo, this.dotRim, this.dotRing]) {
       m.frustumCulled = false;
       m.userData.owNoPrepass = true;
@@ -1409,6 +1444,16 @@ export class Viewmodel {
       return;
     }
     this.reticle.visible = true;
+    /**
+     * Which mark is lit. The optic's `reticle` field selects it, so an OKP-7
+     * shows its green chevron and everything else shows the dot — and the dark
+     * keyline goes with the dot, since the chevron is large enough to survive a
+     * blown-out sky on its own.
+     */
+    const chev = w.optics?.[w.opticId]?.reticle === 'chevron';
+    if (this.chevron) this.chevron.visible = chev;
+    this.dotCore.visible = !chev;
+    this.dotRim.visible = !chev;
     this.reticle.position.copy(_v2);
     this.reticle.lookAt(this.anchor.getWorldPosition(_v));
     /**
@@ -1432,6 +1477,13 @@ export class Viewmodel {
     const coreR = s * lerp(0.00205, 0.0033, ads);
     this.dotCore.scale.setScalar(coreR);
     this.dotRim.scale.setScalar(coreR);
+    /**
+     * The chevron scales off the SAME coreR, so both reticles read at the same
+     * apparent size. Scale is applied per-mesh here, not on the parent group —
+     * miss this and the chevron stays at unit radius, which is a metre wide at
+     * the reticle's distance and fills the screen with green.
+     */
+    if (this.chevron) this.chevron.scale.setScalar(coreR);
     this.dotHalo.scale.setScalar(coreR);
     this.dotRing.scale.setScalar(coreR);
     this.dotCore.material.opacity = alpha;
