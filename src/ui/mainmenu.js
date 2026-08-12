@@ -25,7 +25,14 @@ import * as fs from '../core/fullscreen.js';
  * language is not known when this module is evaluated, only after the portal
  * SDK has answered.
  */
-export const MAPS = [{ id: 'street' }, { id: 'yard' }, { id: 'depot' }, { id: 'swat' }, { id: 'box' }];
+/**
+ * Order is the default: MAPS[0] is what a player who never touches the list
+ * gets. That used to be `street`, the full production map — so the very first
+ * thing anyone did was press Play and wait through the slowest load in the
+ * game, on the one screen where CrazyGames measures whether they stay. Fast
+ * maps first, `street` kept but demoted to what it is: the big one.
+ */
+export const MAPS = [{ id: 'swat' }, { id: 'yard' }, { id: 'depot' }, { id: 'box' }, { id: 'street' }];
 
 export const MODES = [{ id: 'tdm' }, { id: 'sandbox' }];
 

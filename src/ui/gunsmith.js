@@ -143,7 +143,9 @@ export class Gunsmith {
       if (note) setText(note, this._note(slot, wp));
     }
 
-    setText(this.sub, wp?.current?.name ?? '');
+    // `label`, not `name` — a weapon def has no `name`, so the subtitle silently
+    // rendered empty. Same fallback the HUD uses.
+    setText(this.sub, wp?.current?.label ?? wp?.current?.id ?? '');
 
     const c = career();
     const next = nextUnlock();
