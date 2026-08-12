@@ -56,6 +56,7 @@ const CSS = `
 /* Top-left, diagonally opposite the fire button and outside both thumb arcs —
    pause is the one control that must never be hit by accident mid-firefight. */
 .ht-pause{left:14px;top:14px;width:46px;height:46px;font-size:15px}
+.ht-gun{left:70px;top:14px;width:46px;height:46px;font-size:11px}
 @media (max-height:420px){
   .ht-fire{width:84px;height:84px}
   .ht-ads{right:110px;width:64px;height:64px}
@@ -96,7 +97,8 @@ export class TouchControls {
       <button class="ht-btn ht-reload z" type="button">R</button>
       <button class="ht-btn ht-jump z" type="button">Jump</button>
       <button class="ht-btn ht-crouch z" type="button">Duck</button>
-      <button class="ht-btn ht-pause z" type="button" aria-label="Pause">II</button>`;
+      <button class="ht-btn ht-pause z" type="button" aria-label="Pause">II</button>
+      <button class="ht-btn ht-gun z" type="button" aria-label="Gunsmith">GUN</button>`;
     host.appendChild(root);
     this.root = root;
 
@@ -122,6 +124,7 @@ export class TouchControls {
      * all unreachable on the exact platform this build is FOR.
      */
     this._bindButton('.ht-pause', 'Escape');
+    this._bindButton('.ht-gun', 'KeyB');
   }
 
   _bindStick() {

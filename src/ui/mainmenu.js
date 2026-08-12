@@ -37,7 +37,9 @@ const CSS = `
   letter-spacing:.02em;user-select:none}
 .ow-fe h1{font-size:clamp(28px,5vw,54px);font-weight:700;letter-spacing:.14em;
   text-transform:uppercase;color:#fff;text-shadow:0 2px 30px rgba(90,160,255,.25)}
-.ow-fe h1 span{display:block;font-size:.28em;letter-spacing:.42em;font-weight:400;
+/* max(), not a bare em: the subtitle is 0.28 of a title that itself shrinks with
+   the viewport, so on a small phone it compounded down to 8.6px. */
+.ow-fe h1 span{display:block;font-size:max(9.5px,.28em);letter-spacing:.42em;font-weight:400;
   color:#7d8896;margin-top:.6em}
 .ow-fe .ow-cols{display:flex;gap:2.5rem;flex-wrap:wrap;justify-content:center}
 .ow-fe .ow-col{min-width:270px}
@@ -71,6 +73,36 @@ const CSS = `
 .ow-fe .ow-career v{display:block;font-size:15px;font-weight:600;color:#dbe3ec}
 .ow-fe .ow-fsbtn{position:fixed;top:14px;right:16px;width:auto;margin:0;padding:.45rem .8rem;
   font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+
+/* ------------------------------------------------------------- responsive
+ * The menu is the first thing moderation sees, on whatever window they happen
+ * to have open. It centres while it fits and SCROLLS when it does not — the
+ * previous fixed centring pushed the Play button off the bottom of anything
+ * shorter than about 700px, which on a phone in landscape meant the game could
+ * not be started at all. */
+.ow-fe{overflow-y:auto;overflow-x:hidden;padding:
+  max(1.2rem,env(safe-area-inset-top)) max(1.2rem,env(safe-area-inset-right))
+  max(1.2rem,env(safe-area-inset-bottom)) max(1.2rem,env(safe-area-inset-left))}
+@media (max-height:700px){
+  .ow-fe{justify-content:flex-start;gap:1.1rem}
+  .ow-fe h1{font-size:clamp(22px,4.6vw,34px)}
+  .ow-fe h1 span{margin-top:.35em}
+  .ow-fe .ow-career{padding:.5rem 1rem;gap:1.1rem}
+  .ow-fe button{padding:.5rem .8rem;margin-bottom:.35rem}
+  .ow-fe button i{display:none}
+  .ow-fe .ow-play{padding:.7rem 2.6rem}
+}
+@media (max-width:720px){
+  .ow-fe .ow-cols{gap:1.2rem;width:100%}
+  .ow-fe .ow-col{min-width:0;width:100%;max-width:420px}
+  .ow-fe .ow-career{gap:1.1rem;width:100%;max-width:420px;justify-content:space-around}
+  .ow-fe .ow-foot{text-align:center}
+}
+/* Touch: 44px minimum on everything the thumb has to hit. */
+@media (pointer:coarse){
+  .ow-fe button{min-height:44px}
+  .ow-fe .ow-fsbtn{min-height:40px}
+}
 `;
 
 function el(html) {

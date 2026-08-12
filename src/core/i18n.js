@@ -52,6 +52,16 @@ const STRINGS = {
     'menu.resume': 'Resume',
     'menu.locked': 'Locked',
     'menu.locked.at': 'Unlocks at {n} eliminations',
+    'menu.loadout': 'Gunsmith',
+
+    'gun.title': 'GUNSMITH',
+    'gun.optic': 'Optic',
+    'gun.muzzle': 'Muzzle',
+    'gun.mag': 'Magazine',
+    'gun.stock': 'Stock',
+    'gun.finish': 'Finish',
+    'gun.done': 'Done',
+    'gun.hint': 'B or Esc to close · parts fit instantly',
   },
 
   ru: {
@@ -93,6 +103,16 @@ const STRINGS = {
     'menu.resume': 'Продолжить',
     'menu.locked': 'Закрыто',
     'menu.locked.at': 'Откроется на {n} устранениях',
+    'menu.loadout': 'Оружейная',
+
+    'gun.title': 'ОРУЖЕЙНАЯ',
+    'gun.optic': 'Прицел',
+    'gun.muzzle': 'Дуло',
+    'gun.mag': 'Магазин',
+    'gun.stock': 'Приклад',
+    'gun.finish': 'Окраска',
+    'gun.done': 'Готово',
+    'gun.hint': 'B или Esc — закрыть · детали ставятся сразу',
   },
 };
 

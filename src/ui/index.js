@@ -12,6 +12,7 @@ import { Minimap } from './minimap.js';
 import { WorldMarkers } from './markers.js';
 import { Prompt, Banner } from './prompts.js';
 import { PauseMenu } from './menu.js';
+import { Gunsmith } from './gunsmith.js';
 import { CombatDemo } from './demo.js';
 
 const MAX_BLIPS = 48;
@@ -91,6 +92,13 @@ export class UiSystem {
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
     this.menu = new PauseMenu(this.root, ctx);
+    this.gunsmith = new Gunsmith(this.root, ctx);
+    // The pause menu owns no attachment rows any more; it routes to the
+    // gunsmith instead, so there is still a mouse-only way in.
+    this.menu.onLoadout = () => {
+      this.menu.close();
+      this.gunsmith.show();
+    };
 
     this.health.onBeat = (i) => this.sfx('heartbeat', 0.35 + i * 0.5);
 
@@ -405,17 +413,28 @@ export class UiSystem {
     const s = this.state;
     s.time = t.elapsed;
 
-    // ---- pause -----------------------------------------------------------
+    // ---- pause / gunsmith --------------------------------------------------
     if (ctx.input.enabled && !ctx.input.frozen) {
-      if (ctx.input.actionPressed('pause')) this.menu.toggle();
+      /**
+       * Escape closes the gunsmith rather than stacking the pause menu on top of
+       * it. Two modal screens open at once means two things holding `time.scale`
+       * at zero and the second one to close wins, which is how a game gets stuck
+       * frozen with no menu on screen.
+       */
+      if (ctx.input.actionPressed('pause')) {
+        if (this.gunsmith.open) this.gunsmith.close();
+        else this.menu.toggle();
+      }
+      if (ctx.input.actionPressed('loadout') && !this.menu.open) this.gunsmith.toggle();
       // Losing pointer lock mid-match is the same intent as pressing Escape.
       if (ctx.input.pointerLocked) this._hadPointerLock = true;
-      else if (this._hadPointerLock && !this.menu.open) {
+      else if (this._hadPointerLock && !this.menu.open && !this.gunsmith.open) {
         this._hadPointerLock = false;
         this.menu.show();
       }
     }
     this.menu.update(rawDt);
+    this.gunsmith.update(rawDt);
 
     // ---- external state --------------------------------------------------
     // `simulate` means a scripted debug timeline owns the HUD numbers; letting
@@ -584,7 +603,27 @@ export class UiSystem {
   resize(w, h, ctx) {
     this.vw = w;
     this.vh = h;
-    this.k = clamp(h / 1080, 0.62, 2.4);
+    /**
+     * HUD scale.
+     *
+     * Proportional to height is right while the screen is big: the HUD keeps the
+     * same share of the frame at 1440p as at 1080p. It is wrong once the screen
+     * is short, because the smallest label in here is 10.5px * k — at 0.62 that
+     * is a SIX PIXEL glyph, and CrazyGames tests legibility at devicePixelRatio
+     * 1 on exactly the two cases that produce it: a phone in landscape (390 tall)
+     * and a small 16x9 iframe (450 tall).
+     *
+     * So the scale never goes below 1: the HUD is never rendered smaller than
+     * the 1080p design it was tuned at, whatever the screen does. The widgets
+     * that are then too large for a short viewport — minimap, compass — are
+     * re-sized by breakpoint in style.js instead, because the fix for "the
+     * minimap is too big" is a smaller minimap, not smaller type everywhere.
+     *
+     * 1.0 exactly, so a 1080p desktop is pixel-identical to before this floor
+     * existed. Anything larger would silently restyle the reference design.
+     */
+    const FLOOR = 1;
+    this.k = clamp(Math.max(h / 1080, FLOOR), FLOOR, 2.4);
     this.root.style.setProperty('--k', this.k.toFixed(4));
     this.crosshair.setScale(this.k);
     this.compass.setScale(this.k);
@@ -607,6 +646,7 @@ export class UiSystem {
     this.prompt.dispose();
     this.banner.dispose();
     this.menu.dispose();
+    this.gunsmith.dispose();
     this.root.remove();
     removeStyles();
   }

@@ -49,8 +49,9 @@ await p.evaluate(() =>
 );
 await emit(12);
 
-// Banking happens on pause; open the menu the way the pause key does.
-await p.evaluate(() => window.__ENGINE__.ctx.peek('ui').menu.show());
+// Banking happens on pause, and the gunsmith raises the same `ui:pause` the
+// pause menu does — so opening the loadout is what banks and re-gates.
+await p.evaluate(() => window.__ENGINE__.ctx.peek('ui').gunsmith.show());
 await p.waitForTimeout(150);
 
 const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('hs.career') ?? 'null'));
@@ -60,9 +61,10 @@ ok('streak survives a player death', saved?.best === 12, `best=${saved?.best}`);
 
 // 12 kills clears the 10-kill muzzle but not the 25-kill skin.
 const gate = await p.evaluate(() => {
-  const m = window.__ENGINE__.ctx.peek('ui').menu;
-  const grab = (btns) => btns.map(([b, id]) => [id, b.disabled]);
-  return { muzzle: grab(m.muzzleBtns), skin: grab(m.skinBtns) };
+  const g = window.__ENGINE__.ctx.peek('ui').gunsmith;
+  const grab = (slot) =>
+    g.slots.find((s) => s.slot === slot).btns.map(([b, id]) => [id, b.disabled]);
+  return { muzzle: grab('muzzle'), skin: grab('skin') };
 });
 const dis = (rows, id) => rows.find((r) => r[0] === id)?.[1];
 ok('free attachment unlocked', dis(gate.muzzle, 'bare') === false);
@@ -73,9 +75,9 @@ ok('900-kill skin still locked', dis(gate.skin, 'bronze') === true);
 // Banking must drain, not latch: more kills after a bank still count.
 await emit(20);
 await p.evaluate(() => {
-  const m = window.__ENGINE__.ctx.peek('ui').menu;
-  m.close();
-  m.show();
+  const g = window.__ENGINE__.ctx.peek('ui').gunsmith;
+  g.close();
+  g.show();
 });
 await p.waitForTimeout(150);
 const after = await p.evaluate(() => JSON.parse(localStorage.getItem('hs.career')));

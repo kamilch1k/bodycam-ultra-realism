@@ -23,6 +23,9 @@ export const ACTIONS = {
   swapWeapon: ['Digit1', 'Digit2', 'Tab'],
   grenade: ['KeyG'],
   flashlight: ['KeyT'],
+  // B for the gunsmith — the buy/loadout key every shooter player already has in
+  // their hand. G was taken by grenades.
+  loadout: ['KeyB'],
   pause: ['Escape'],
 };
 
