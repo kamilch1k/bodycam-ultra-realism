@@ -327,6 +327,22 @@ export class FxSystem {
       // `prevRt` — the target the pipeline had bound before this hook swapped in
       // its 1x1 scratch — is what the warp pass actually writes to in a frame.
       this.hazeSys.prewarm(renderer, prevRt);
+
+      /**
+       * Then make the pass actually RUN.
+       *
+       * `renderer.compile()` was not enough: `fx-distort` and `fx-haze-warp`
+       * still built on the first two frames of a held trigger, every run
+       * (tools/fire-stutter.mjs). The warp pass is gated on a live sprite —
+       * `update()` sets `pass.enabled` from the layer's instance count — so with
+       * nothing emitted the pass never executes during boot and its programs
+       * compile the first time a muzzle blast puts a sprite on screen.
+       *
+       * One puff at effectively zero strength fixes that: the pass is live for
+       * the next few frames, compiles while the loading screen is still up, and
+       * distorts by ~1e-4 of a UV, which is invisible.
+       */
+      this.hazeSys.emit(this.now, 0, -9000, 0, 0.05, 1, 0.5, 1e-4, P.SMOKE_A, 0);
     } finally {
       renderer.setRenderTarget(prevRt, prevFace, prevMip);
       rt.dispose();
