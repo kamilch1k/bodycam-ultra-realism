@@ -26,16 +26,30 @@ export const QUALITY_PRESETS = {
    * pass was measured at 326 of the frame's 644 draw calls and 3.0M of its 5.1M
    * triangles; on a phone GPU that is not a 1.3 ms line item, it is the frame.
    *
-   * Dropping it entirely used to make everything float, which is why `low` kept
-   * one short cascade. `contactShadows: true` is what replaces it: a short
-   * screen-space ray march toward the sun that resolves the 0-40 cm of contact
-   * under a crate or a boot. That is the part the eye actually reads as
-   * "standing on the ground" — the long soft cast shadow is not.
+   * NO SHADOWS OF ANY KIND, and no screen-space luxuries. Contact shadows used
+   * to be kept here as the cheap stand-in that stops everything floating — a
+   * short screen-space ray march resolving the 0-40 cm under a crate or a boot.
+   * They are gone too, because "cheap" was measured per FRAME and the cost that
+   * matters is per PIXEL.
+   *
+   * A screen-space march costs in proportion to what fills the screen, and the
+   * reported hitch is walking up to an enemy: at two metres a soldier covers a
+   * large fraction of the viewport, and every one of those pixels marches. The
+   * approach probe showed draw calls flat at 235 and triangles flat at 250k
+   * from 54 m to 2 m — the geometry does not change, so a per-pixel pass is the
+   * only thing left that grows as you close in.
+   *
+   * Bloom goes for the same reason: another full-screen pass, on a build whose
+   * job is to run on a phone in a portal iframe.
+   *
+   * Everything here is still available — `?q=high`, `?q=ultra`, or the quality
+   * menu. This is only what a first-time portal player gets by default, and for
+   * them a stable frame beats grounded contact every time.
    */
   mobile: {
     renderScale: 0.7,
     shadows: false,
-    contactShadows: true,
+    contactShadows: false,
     shadowMapSize: 512,
     cascades: 1,
     shadowDistance: 30,
@@ -44,7 +58,7 @@ export const QUALITY_PRESETS = {
     ssr: false,
     volumetrics: false,
     motionBlur: false,
-    bloom: true,
+    bloom: false,
     anisotropy: 2,
     charTextureSize: 192,
     /**
