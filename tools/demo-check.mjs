@@ -10,7 +10,7 @@
 import { chromium } from 'playwright';
 
 const BASE = process.argv[2] ?? 'http://127.0.0.1:5181/';
-const MAPS = ['swat', 'yard', 'depot', 'box', 'street'];
+const MAPS = ['strike', 'holdout'];
 
 const b = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 let bad = 0;

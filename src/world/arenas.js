@@ -53,113 +53,140 @@ function wall(axis, fixed, a, b, h, doors = [], t = WALL_T) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── *
- *  YARD — a compact open arena with a central block.
+ *  STRIKE — the round-based map.
  *
- *  The read is instant: one building in the middle you can circle either way,
- *  four corners with cover, and sightlines short enough that a fight starts
- *  within a couple of seconds of spawning. The central block has two through
- *  routes so it is a loop rather than a wall, which is what keeps a chase alive.
+ *  Built to the oldest competitive shape there is, because it is the one every
+ *  player already knows how to read: two spawns facing each other, TWO routes
+ *  between them, and one contested objective where they meet.
+ *
+ *    LONG   the open north lane. Fast, no cover for the last 12 m, so taking it
+ *           is a bet that nobody is already holding the site.
+ *    SHORT  the south lane, through a building with two doors. Slower and
+ *           blind, but you arrive with a wall at your back.
+ *
+ *  Both empty onto the SITE in the middle. That is the whole design: one place
+ *  worth standing, two ways to reach it, and no third option to memorise.
  * ────────────────────────────────────────────────────────────────────────── */
-const YARD = [
-  // perimeter, 52 x 44
-  ...wall('x', 22, -26, 26, 4.5, [], 0.6),
-  ...wall('x', -22, -26, 26, 4.5, [], 0.6),
-  ...wall('z', -26, -22, 22, 4.5, [], 0.6),
-  ...wall('z', 26, -22, 22, 4.5, [], 0.6),
+const STRIKE = [
+  // perimeter, 64 x 44
+  ...wall('x', 22, -32, 32, 5, [], 0.6),
+  ...wall('x', -22, -32, 32, 5, [], 0.6),
+  ...wall('z', -32, -22, 22, 5, [], 0.6),
+  ...wall('z', 32, -22, 22, 5, [], 0.6),
 
-  // central block, 16 x 10, open through both axes
-  ...wall('x', 5, -8, 8, 3, [0]),
-  ...wall('x', -5, -8, 8, 3, [0]),
-  ...wall('z', -8, -5, 5, 3, [0]),
-  ...wall('z', 8, -5, 5, 3, [0]),
+  // The spine that splits long from short. One doorway at mid so the two lanes
+  // are connected rather than parallel — without it the map is two corridors
+  // and every round plays identically.
+  ...wall('x', 2, -20, 20, 3.2, [-4]),
 
-  // corner cover — two low, two tall, so no corner plays like another
-  [-17, 15, 5, 1.2, 1.1, 0.25],
-  [17, -15, 5, 1.2, 1.1, -0.25],
-  [-17, -14, 3.4, 3.4, 2.6, 0.4],
-  [17, 14, 3.4, 3.4, 2.6, -0.4],
+  // SHORT — the south building. Two doors, so it is a route and never a trap.
+  ...wall('x', -10, -14, 6, 3.2, [-4]),
+  ...wall('z', -14, -10, 2, 3.2, [-6]),
+  ...wall('z', 6, -10, 2, 3.2, [-6]),
 
-  // mid-lane cover, offset so the two lanes are not mirror images
-  [0, 16, 6, 1.2, 1.1, 0],
-  [0, -16, 4, 1.2, 1.1, 0],
-  [-14, 2, 1.2, 5, 1.1, 0],
-  [14, -2, 1.2, 5, 1.1, 0],
-  // vaultable ledges: a route, not an obstacle
-  [-9, -9, 3, 1, 0.7, 0.5],
-  [9, 9, 3, 1, 0.7, 0.5],
+  // SITE — waist-high crates you fight over. Deliberately not a room: cover you
+  // can shoot across beats cover you hide behind.
+  [0, 10, 5, 1.2, 1.1, 0],
+  [-4, 14, 1.2, 4, 1.1, 0],
+  [4, 14, 1.2, 4, 1.1, 0],
+  [0, 17, 3.4, 1.2, 1.9, 0],
+
+  // LONG — sparse cover, placed so the lane is crossable but never safe.
+  [-16, 14, 3.4, 1.2, 1.1, 0.3],
+  [16, 12, 3.4, 1.2, 1.1, -0.3],
+  [-24, 8, 1.2, 5, 1.9, 0],
+  [24, 8, 1.2, 5, 1.9, 0],
+
+  // spawn-side cover, so neither team is shot the instant it appears
+  [-27, -16, 4, 1.2, 1.1, 0],
+  [27, -16, 4, 1.2, 1.1, 0],
+  // vaultable ledges into the site
+  [-7, 6, 3, 1, 0.7, 0],
+  [7, 6, 3, 1, 0.7, 0],
 ];
 
-const YARD_SPAWNS = [
-  [-20, 18, -2.4, 'north west'],
-  [20, 18, 2.4, 'north east'],
-  [-20, -18, -0.7, 'south west'],
-  [20, -18, 0.7, 'south east'],
-  [0, 19, Math.PI, 'north gate'],
-  [0, -19, 0, 'south gate'],
+const STRIKE_SPAWNS = [
+  [-28, -18, 0.8, 'west spawn'],
+  [-24, -19, 0.8, 'west spawn 2'],
+  [28, -18, -0.8, 'east spawn'],
+  [24, -19, -0.8, 'east spawn 2'],
+  [-28, 18, Math.PI - 0.6, 'long west'],
+  [28, 18, Math.PI + 0.6, 'long east'],
 ];
 
 /* ────────────────────────────────────────────────────────────────────────── *
- *  DEPOT — an indoor hall of aisles.
+ *  HOLDOUT — the horde map.
  *
- *  Crate rows make parallel lanes with gaps you can cut through, so the fight
- *  is about which lane the other player is in. Two offices at the ends give the
- *  map its only enclosed spaces and its only long sightline, down the middle.
+ *  Inverted from every other level here. The others are symmetrical because two
+ *  sides meet on equal terms; this one has a CENTRE and an OUTSIDE, because the
+ *  fight is one player against a tide that arrives from all of it.
+ *
+ *  The keep is 18 x 18 with THREE doors, never four and never one. One door is
+ *  a choke you hold forever and the mode stops being a game; four means you are
+ *  flanked from behind whichever way you turn. Three is the number that makes
+ *  you keep moving without ever being surrounded.
+ *
+ *  No roof and nothing above 3 m, so you can always see which side the next
+ *  wave is coming from — the whole tension of a horde mode is reading that
+ *  early, and a wall you cannot see over converts tension into a cheap death.
  * ────────────────────────────────────────────────────────────────────────── */
-const DEPOT = [
-  // shell, 56 x 36
-  ...wall('x', 18, -28, 28, 5, [], 0.5),
-  ...wall('x', -18, -28, 28, 5, [], 0.5),
-  ...wall('z', -28, -18, 18, 5, [], 0.5),
-  ...wall('z', 28, -18, 18, 5, [], 0.5),
+const HOLDOUT = [
+  // perimeter, 60 x 60 — square on purpose: no direction is the safe one
+  ...wall('x', 30, -30, 30, 5, [], 0.6),
+  ...wall('x', -30, -30, 30, 5, [], 0.6),
+  ...wall('z', -30, -30, 30, 5, [], 0.6),
+  ...wall('z', 30, -30, 30, 5, [], 0.6),
 
-  /**
-   * Offices at each END OF THE HALL — that is x, not z: `wall('z', …)` runs
-   * ALONG z at a fixed x. Two doors each, so neither is a dead end.
-   */
-  ...wall('z', -17, -18, 18, 3.2, [-9, 9]),
-  ...wall('z', 17, -18, 18, 3.2, [-9, 9]),
+  // THE KEEP — three doors: north, west, east. South is solid, so there is
+  // always one wall you can put your back to.
+  ...wall('x', 9, -9, 9, 3, [0]),
+  ...wall('x', -9, -9, 9, 3, []),
+  ...wall('z', -9, -9, 9, 3, [0]),
+  ...wall('z', 9, -9, 9, 3, [0]),
 
-  // four crate aisles. Rows are broken into stacks with cut-throughs between,
-  // so a lane is a choice rather than a corridor.
-  ...[-9, -3, 3, 9].flatMap((x, i) => {
-    const tall = i % 2 === 0;
-    const h = tall ? 2.4 : 1.1;
-    return [
-      [x, -11, 2.2, 6, h, 0],
-      [x, -2.5, 2.2, 7, h, 0],
-      [x, 7, 2.2, 6, h, 0],
-    ];
-  }),
+  // Interior cover — breaks line of sight across the keep so a horde that gets
+  // in has to come around something instead of straight at you.
+  [-4, 3, 3.4, 1.2, 1.1, 0],
+  [4, -3, 3.4, 1.2, 1.1, 0],
+  [0, 0, 1.2, 1.2, 1.9, 0.4],
 
-  // Office furniture — inside the offices, which sit beyond x = +-17.
-  [-22, -9, 1.2, 4, 1.1, 0],
-  [-22, 9, 1.2, 4, 1.1, 0],
-  [22, -9, 1.2, 4, 1.1, 0],
-  [22, 9, 1.2, 4, 1.1, 0],
-  [-23, 0, 3, 1.2, 1.1, 0.3],
-  [23, 0, 3, 1.2, 1.1, -0.3],
-  // vaultable pallets in the central lane
-  [-14, 0, 1, 2.4, 0.7, 0],
-  [14, 0, 1, 2.4, 0.7, 0],
+  // Approach cover — the horde funnels past these, which is what makes a
+  // grenade or a burst on the choke worth spending.
+  [-18, 14, 4, 1.2, 1.1, 0.2],
+  [18, 14, 4, 1.2, 1.1, -0.2],
+  [-18, -14, 4, 1.2, 1.1, -0.2],
+  [18, -14, 4, 1.2, 1.1, 0.2],
+  [0, 22, 6, 1.2, 1.1, 0],
+  [0, -22, 6, 1.2, 1.1, 0],
+  [-24, 0, 1.2, 6, 1.1, 0],
+  [24, 0, 1.2, 6, 1.1, 0],
+  // vaultable ledges, so a cornered player always has one way out
+  [-12, -12, 3, 1, 0.7, 0.5],
+  [12, 12, 3, 1, 0.7, 0.5],
 ];
 
-const DEPOT_SPAWNS = [
-  [-24, -12, Math.PI / 2, 'west office south'],
-  [-24, 12, Math.PI / 2, 'west office north'],
-  [24, -12, -Math.PI / 2, 'east office south'],
-  [24, 12, -Math.PI / 2, 'east office north'],
-  [0, -15, 0, 'floor south'],
-  [0, 15, Math.PI, 'floor north'],
+/**
+ * Player first, then the ring. `populate()` ranks spawns by distance from the
+ * player and garrisons the far half, so putting the keep first and the corners
+ * last makes a horde arrive from the perimeter without any mode-specific code.
+ */
+const HOLDOUT_SPAWNS = [
+  [0, 0, 0, 'the keep'],
+  [-26, 26, -2.4, 'north west'],
+  [26, 26, 2.4, 'north east'],
+  [-26, -26, -0.7, 'south west'],
+  [26, -26, 0.7, 'south east'],
+  [0, 27, Math.PI, 'north gate'],
 ];
 
 export const ARENAS = {
-  yard: { walls: YARD, spawns: YARD_SPAWNS, floor: [60, 52] },
-  depot: { walls: DEPOT, spawns: DEPOT_SPAWNS, floor: [64, 44] },
+  strike: { walls: STRIKE, spawns: STRIKE_SPAWNS, floor: [68, 48] },
+  holdout: { walls: HOLDOUT, spawns: HOLDOUT_SPAWNS, floor: [64, 64] },
 };
 
 /**
  * @param {object} A   the world Assembler
- * @param {string} id  'yard' | 'depot'
+ * @param {string} id  'strike' | 'holdout'
  */
 export function buildArena(A, id) {
   const spec = ARENAS[id];

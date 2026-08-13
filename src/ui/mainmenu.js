@@ -32,9 +32,17 @@ import * as fs from '../core/fullscreen.js';
  * game, on the one screen where CrazyGames measures whether they stay. Fast
  * maps first, `street` kept but demoted to what it is: the big one.
  */
-export const MAPS = [{ id: 'swat' }, { id: 'yard' }, { id: 'depot' }, { id: 'box' }, { id: 'street' }];
+export const MAPS = [{ id: 'strike' }, { id: 'holdout' }];
 
-export const MODES = [{ id: 'tdm' }, { id: 'sandbox' }];
+/**
+ * Two modes, one map each, and the map list is now those two maps. Five maps
+ * across two modes meant most combinations were a level being played the way it
+ * was not designed for — the horde map has one keep and three doors because a
+ * horde arrives from everywhere, and that shape is meaningless in a round.
+ * `tdm` and `sandbox` still exist for `?mode=`; they are just not a choice a
+ * portal player has to make before they have played once.
+ */
+export const MODES = [{ id: 'strike' }, { id: 'horde' }];
 
 const CSS = `
 .ow-fe{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
