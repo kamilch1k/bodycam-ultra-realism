@@ -19,6 +19,7 @@
 import { t, rankName } from '../core/i18n.js';
 import { career, level, nextUnlock } from '../core/save.js';
 import * as fs from '../core/fullscreen.js';
+import { MENU_BG } from './menubg.js';
 
 /**
  * Names and blurbs are i18n KEYS resolved at paint time, not strings: the
@@ -47,9 +48,23 @@ export const MODES = [{ id: 'strike' }, { id: 'horde' }];
 const CSS = `
 .ow-fe{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:2.2rem;
-  background:radial-gradient(120% 90% at 50% 0%,#243040 0%,#0d1116 60%,#05070a 100%);
+  /* Scrim FIRST, photo second, flat colour last. The scrim is not decoration:
+     the shot is a bright concrete wall and white 11px labels on it are
+     unreadable, which is a moderation fail on both portals. The flat colour
+     underneath means a failed image decode degrades to the old dark menu
+     rather than to black text on nothing. */
+  background:
+    linear-gradient(105deg,rgba(5,8,12,.94) 0%,rgba(5,8,12,.80) 45%,rgba(5,8,12,.62) 100%),
+    url("${MENU_BG}") center/cover no-repeat,
+    radial-gradient(120% 90% at 50% 0%,#243040 0%,#0d1116 60%,#05070a 100%);
   color:#e8eaed;font:400 15px/1.5 "Inter","Helvetica Neue",Arial,sans-serif;
   letter-spacing:.02em;user-select:none}
+/* Panels get their own ground so they read as UI sitting ON the photo rather
+   than as text floating in it. */
+.ow-fe .ow-col,.ow-fe .ow-career{background:rgba(9,13,19,.72);
+  border:1px solid rgba(45,58,74,.9);border-radius:10px;padding:1rem 1.1rem;
+  backdrop-filter:blur(3px)}
+.ow-fe .ow-career{padding:.7rem 1.4rem}
 .ow-fe h1{font-size:clamp(28px,5vw,54px);font-weight:700;letter-spacing:.14em;
   text-transform:uppercase;color:#fff;text-shadow:0 2px 30px rgba(90,160,255,.25)}
 /* max(), not a bare em: the subtitle is 0.28 of a title that itself shrinks with
