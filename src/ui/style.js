@@ -669,7 +669,13 @@ const CSS = `
   position:absolute; inset:0; width:100%; height:100%; margin:0;
   appearance:none; background:transparent; cursor:pointer; opacity:0;
 }
-.ow-btns { margin-top: calc(var(--u) * 5); display:flex; gap: calc(var(--u) * 2.5); }
+/* WRAP. Five buttons at English widths just fit; the Russian labels are longer
+   ("ПРОДОЛЖИТЬ", "ОРУЖЕЙНАЯ") and pushed the last one off the panel edge, where
+   the panel's overflow rule clipped its text to nothing. A row of actions must
+   never depend on how long a translation happens to be.
+   (No backticks in here: this whole stylesheet is a JS template literal.) */
+.ow-btns { margin-top: calc(var(--u) * 5); display:flex; flex-wrap:wrap;
+  gap: calc(var(--u) * 2.5); }
 .ow-btn {
   appearance:none; border:1px solid var(--hair); background: rgba(255,255,255,.04);
   color: var(--ink); font-family: var(--ff); font-weight:600; text-transform:uppercase;
