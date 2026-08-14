@@ -78,6 +78,23 @@ export const SKINS = {
 
   /** Burnt bronze. Warm and dark; the one that still reads at night. */
   bronze: { label: 'Bronze', paint: [0.3, 0.19, 0.1], amount: 0.94 },
+
+  /* ---------------------------------------------------------------- loud --
+   * Everything above is a real firearm finish, and real finishes are dark:
+   * the brightest of them sits near 0.44 albedo because a gun you can see from
+   * a mile away is a bad gun. These are the opposite on purpose — arcade
+   * finishes for an arcade game, in the 0.75-0.95 range where they read as
+   * SATURATED rather than merely light.
+   *
+   * `amount: 1` because a partial blend toward a bright paint over a near-black
+   * receiver lands in the muddy middle instead of on the colour asked for.
+   * -------------------------------------------------------------------- */
+  hotpink: { label: 'Hot Pink', paint: [0.95, 0.18, 0.62], amount: 1 },
+  cyan: { label: 'Electric Blue', paint: [0.13, 0.62, 0.98], amount: 1 },
+  orange: { label: 'Sunset', paint: [1.0, 0.45, 0.08], amount: 1 },
+  arctic: { label: 'Arctic', paint: [0.93, 0.95, 0.97], amount: 1 },
+  acid: { label: 'Acid', paint: [0.68, 0.95, 0.13], amount: 1 },
+  violet: { label: 'Violet', paint: [0.62, 0.28, 0.98], amount: 1 },
 };
 
 /** Luminance floor and gain — see the shader hook in viewmodel.setSkin. */

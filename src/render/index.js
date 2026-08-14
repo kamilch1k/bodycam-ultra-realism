@@ -492,17 +492,26 @@ export class RenderSystem {
       viewFillOcclusion: 0.45,
       // Viewmodel 3-point rig. The key is scaled off the scene's own light
       // level (see _updateViewRig); fill, rim and hemisphere are ratios of it.
-      viewKeyScale: 0.55,
-      viewKeyMax: 2.6,
+      /**
+       * 0.55 put the weapon at just over half the world's own sun. Against
+       * sunlit sand that reads as a gun lit by a different, dimmer day — the
+       * hands especially, because skin has nowhere near the specular a rifle
+       * has to compensate with. 0.82 keeps the viewmodel a touch under ambient
+       * (a real gun in your hands IS shaded by you) without it going to
+       * silhouette, and the cap moves with it or the scale is clipped away in
+       * full daylight, which is exactly where the complaint came from.
+       */
+      viewKeyScale: 0.82,
+      viewKeyMax: 3.8,
       viewFillRatio: 0.3,
       viewRimRatio: 0.5,
       // 0.35 hemisphere against a ~2.2 daylight key, expressed as a ratio so it
       // follows the time of day instead of blowing the gun out at night.
-      viewHemiRatio: 0.16,
+      viewHemiRatio: 0.26,
       // Warm ground bounce from below. Sized to lift the glove out of the
       // handguard's cast shadow without competing with the key: at 0.34 of the
       // key it is ~1.5 stops down, which is about what a sand street returns.
-      viewBounceRatio: 0.34,
+      viewBounceRatio: 0.44,
       viewKeyGamma: 0.65,
       shadowStrength: 1.0,
       sunSoftness: 0.024,

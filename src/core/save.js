@@ -48,6 +48,16 @@ export const UNLOCKS = [
   { slot: 'skin', id: 'urban', at: 520 },
   { slot: 'muzzle', id: 'can', at: 680 },
   { slot: 'skin', id: 'bronze', at: 900 },
+
+  // The loud finishes. Cheaper than the tail of the realistic set on purpose:
+  // they are the ones a player actually wants to show off, so they should land
+  // while they are still playing rather than at 900 kills.
+  { slot: 'skin', id: 'cyan', at: 55 },
+  { slot: 'skin', id: 'orange', at: 130 },
+  { slot: 'skin', id: 'hotpink', at: 260 },
+  { slot: 'skin', id: 'acid', at: 380 },
+  { slot: 'skin', id: 'violet', at: 600 },
+  { slot: 'skin', id: 'arctic', at: 780 },
 ];
 
 /** Career level thresholds, in eliminations. Index lines up with rankName(). */
