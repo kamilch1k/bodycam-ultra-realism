@@ -157,6 +157,29 @@ export class PauseMenu {
     const loadout = el('button', 'ow-btn', btns, t('menu.loadout'));
     loadout.type = 'button';
     loadout.addEventListener('click', () => this.onLoadout?.());
+    /**
+     * EXIT TO MENU — a navigation, not a teardown.
+     *
+     * Disposing the engine and re-showing the front end in place would be the
+     * elegant version and is not worth the risk: every subsystem would have to
+     * release its GPU resources perfectly or the second boot leaks a context.
+     * Navigating to the bare path re-runs the whole load, which the menu is
+     * already built to cover, and drops any `?map=`/`?mode=` so the front end
+     * actually appears instead of being skipped.
+     *
+     * The session is banked first — `pagehide` fires on navigation, but relying
+     * on that ordering to save a career is how a career gets lost.
+     */
+    const exit = el('button', 'ow-btn', btns, t('menu.exit'));
+    exit.type = 'button';
+    exit.addEventListener('click', () => {
+      try {
+        this.ctx.events?.emit('session:bank');
+      } catch {
+        /* a save that fails must not trap the player in the match */
+      }
+      location.href = location.pathname;
+    });
     const reset = el('button', 'ow-btn', btns, 'Defaults');
     reset.type = 'button';
     reset.addEventListener('click', () => {

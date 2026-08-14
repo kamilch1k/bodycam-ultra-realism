@@ -13,6 +13,7 @@ import { WorldMarkers } from './markers.js';
 import { Prompt, Banner } from './prompts.js';
 import { PauseMenu } from './menu.js';
 import { Gunsmith } from './gunsmith.js';
+import { PerfHud } from './perfhud.js';
 import { CombatDemo } from './demo.js';
 
 const MAX_BLIPS = 48;
@@ -91,6 +92,19 @@ export class UiSystem {
     this.ammo = new AmmoPanel(this.chromeLayer);
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
+    /**
+     * Mounted on the ROOT, not the chrome layer: the chrome layer is hidden with
+     * the rest of the HUD in the menus and in capture mode, and a frame-time
+     * overlay that disappears exactly when you open a menu to look at it is
+     * useless.
+     */
+    this.perf = new PerfHud(this.root);
+    this._onPerfKey = (e) => {
+      if (e.code !== 'F3') return;
+      e.preventDefault();
+      this.perf.toggle();
+    };
+    addEventListener('keydown', this._onPerfKey);
     this.menu = new PauseMenu(this.root, ctx);
     this.gunsmith = new Gunsmith(this.root, ctx);
     // The pause menu owns no attachment rows any more; it routes to the
@@ -433,6 +447,7 @@ export class UiSystem {
         this.menu.show();
       }
     }
+    this.perf.update(rawDt, ctx);
     this.menu.update(rawDt);
     this.gunsmith.update(rawDt);
 
@@ -649,6 +664,8 @@ export class UiSystem {
     this.markers.dispose();
     this.prompt.dispose();
     this.banner.dispose();
+    removeEventListener('keydown', this._onPerfKey);
+    this.perf.dispose();
     this.menu.dispose();
     this.gunsmith.dispose();
     this.root.remove();

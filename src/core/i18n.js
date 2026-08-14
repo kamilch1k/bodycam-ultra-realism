@@ -60,6 +60,7 @@ const STRINGS = {
     'menu.resume': 'Resume',
     'menu.locked': 'Locked',
     'menu.locked.at': 'Unlocks at {n} eliminations',
+    'menu.exit': 'Exit to Menu',
     'menu.loadout': 'Gunsmith',
 
     'gun.title': 'GUNSMITH',
@@ -119,6 +120,7 @@ const STRINGS = {
     'menu.resume': 'Продолжить',
     'menu.locked': 'Закрыто',
     'menu.locked.at': 'Откроется на {n} устранениях',
+    'menu.exit': 'В меню',
     'menu.loadout': 'Оружейная',
 
     'gun.title': 'ОРУЖЕЙНАЯ',

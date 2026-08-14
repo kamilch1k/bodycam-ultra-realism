@@ -40,6 +40,10 @@ export class Engine {
       /** Last frame delta, scaled and clamped. */ dt: 0,
       /** Fixed step. */ fixed: FIXED_DT,
       /** Interpolation alpha between the last two physics steps, 0..1. */ alpha: 0,
+      /** Fixed steps run on the LAST frame. Read by the F3 overlay: a value
+       *  that swings frame to frame means the accumulator is beating against
+       *  the display refresh, which reads as stutter at a perfect frame rate. */
+      steps: 0,
       scale: 1,
       frame: 0,
     };
@@ -136,6 +140,7 @@ export class Engine {
       this._accum -= FIXED_DT;
       steps++;
     }
+    t.steps = steps;
     if (steps === MAX_SUBSTEPS) this._accum = 0; // shed backlog rather than spiral
     t.alpha = this._accum / FIXED_DT;
 

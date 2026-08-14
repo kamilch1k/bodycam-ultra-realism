@@ -163,9 +163,9 @@ export const DEFAULTS = {
    * takes ~25 s to build and on a portal that is a bounce rather than a load.
    * The greybox levels are up in about a second.
    */
-  map: 'strike',
+  map: 'holdout',
   /** 'tdm' garrisons the level with enemy squads; 'sandbox' spawns none. */
-  mode: 'strike',
+  mode: 'horde',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,

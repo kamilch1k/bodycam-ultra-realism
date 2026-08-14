@@ -43,7 +43,14 @@ export const MAPS = [{ id: 'strike' }, { id: 'holdout' }];
  * `tdm` and `sandbox` still exist for `?mode=`; they are just not a choice a
  * portal player has to make before they have played once.
  */
-export const MODES = [{ id: 'strike' }, { id: 'horde' }];
+/**
+ * ONE mode for now. Strike still works via `?mode=strike` and its rules are
+ * intact, but a portal player choosing between two modes before playing either
+ * is a choice made on no information — and Holdout is the one with a hook.
+ * With a single entry the column is not rendered at all, so the menu is a map
+ * choice and a Play button.
+ */
+export const MODES = [{ id: 'horde' }];
 
 const CSS = `
 .ow-fe{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
@@ -183,7 +190,9 @@ export function showMainMenu(initial = {}) {
       </div>
       <div class="ow-cols">
         <div class="ow-col" id="ow-maps"><h2>${t('menu.map')}</h2>${list(MAPS, map, 'map')}</div>
-        <div class="ow-col" id="ow-modes"><h2>${t('menu.mode')}</h2>${list(MODES, mode, 'mode')}</div>
+        ${MODES.length > 1
+          ? `<div class="ow-col" id="ow-modes"><h2>${t('menu.mode')}</h2>${list(MODES, mode, 'mode')}</div>`
+          : ''}
       </div>
       <button type="button" class="ow-play">${t('menu.play')}</button>
       <div class="ow-foot">${t(touch ? 'menu.controls.touch' : 'menu.controls')}</div>
@@ -194,6 +203,10 @@ export function showMainMenu(initial = {}) {
   root.querySelector('.ow-fsbtn')?.addEventListener('click', () => fs.toggle());
 
   const pick = (container, onPick) => {
+    // A column that was not rendered is a legitimate state, not a bug: with one
+    // mode there is nothing to choose between, so `#ow-modes` is absent and this
+    // is called with null. Without the guard the menu threw on every paint.
+    if (!container) return;
     container.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
       if (!b) return;

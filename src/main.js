@@ -317,6 +317,9 @@ function bank() {
   session.start = performance.now();
 }
 addEventListener('pagehide', bank);
+// Exit-to-menu navigates away, and `pagehide` ordering is not something a career
+// should depend on. The pause menu emits this so the drain happens first.
+engine.ctx.events.on('session:bank', bank);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) bank();
 });
