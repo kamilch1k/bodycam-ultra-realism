@@ -147,16 +147,49 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
   // 'combat' and a default wall burst; anything else falls through to the same
   // default, so enumerating surface names buys nothing. weapons.debugPose
   // understands 'idle' | 'ads' | 'fire'.
+  /**
+   * Named so the caller can take a SUBSET. Warming all of them is correct and
+   * costs 20-48 s of blocked main thread — the whole reason this pass was off by
+   * default. But only two of them matter for the stutter a player actually
+   * feels, measured with tools/fire-programs.mjs: `muzzle` builds `fx-distort`
+   * and `fx-haze-warp`, `lowhealth` builds `player:lowhealth`. Those three were
+   * the only programs compiling during play, so `'lite'` warms exactly them and
+   * skips the expensive rest.
+   */
   const transientStages = [
-    () => engine.ctx.peek('ai')?.debugStage?.('firefight'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('wall'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('explosion'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('muzzle'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('combat'),
-    () => engine.ctx.peek('weapons')?.debugPose?.('fire'),
-    () => engine.ctx.peek('weapons')?.debugPose?.('ads'),
-    () => engine.ctx.peek('ui')?.debugState?.('combat'),
+    { id: 'ai', run: () => engine.ctx.peek('ai')?.debugStage?.('firefight') },
+    { id: 'wall', run: () => engine.ctx.peek('fx')?.debugBurst?.('wall') },
+    { id: 'explosion', run: () => engine.ctx.peek('fx')?.debugBurst?.('explosion') },
+    { id: 'muzzle', run: () => engine.ctx.peek('fx')?.debugBurst?.('muzzle') },
+    { id: 'combat', run: () => engine.ctx.peek('fx')?.debugBurst?.('combat') },
+    { id: 'fire', run: () => engine.ctx.peek('weapons')?.debugPose?.('fire') },
+    { id: 'ads', run: () => engine.ctx.peek('weapons')?.debugPose?.('ads') },
+    { id: 'ui', run: () => engine.ctx.peek('ui')?.debugState?.('combat') },
+    /**
+     * The low-health pass sets `enabled` from health every frame, so it cannot
+     * be forced on directly — it would be switched straight back off before it
+     * ever rendered. Dropping health through the real accessor is the only way
+     * to make the pass run, and running it is the only way its program is built.
+     */
+    {
+      id: 'lowhealth',
+      run: () => {
+        const h = engine.ctx.peek('player')?.health;
+        if (!h) return;
+        h.__warmPrev = h.value;
+        h.value = h.max * 0.12;
+      },
+    },
   ];
+
+  /** The cheap subset that covers every program measured compiling in play. */
+  const LITE = ['muzzle', 'lowhealth'];
+  const chosenStages =
+    transients === 'lite'
+      ? transientStages.filter((x) => LITE.includes(x.id))
+      : transients
+        ? transientStages
+        : [];
 
   // A RENDER TARGET MUST BE BOUND WHILE COMPILING. three folds `outputColorSpace`
   // and `toneMapping` into the program cache key and reads BOTH off the currently
@@ -193,7 +226,7 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
 
   try {
     let step = 0;
-    const totalSteps = WARM_POSES.length * 2 + (transients ? transientStages.length : 0) + 1;
+    const totalSteps = WARM_POSES.length * 2 + chosenStages.length + 1;
     const tick = () => onProgress(Math.min(1, ++step / totalSteps));
 
     // Pass 1: compile the static world from each pose, with the depth/shadow
@@ -272,8 +305,8 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
 
     // Pass 2: spawn each subsystem's transient objects and compile those too.
     // Gated: see the `transients` option doc — this pass is not pixel-transparent.
-    for (const spawn of (transients ? transientStages : [])) {
-      try { spawn(); } catch { /* subsystem may not implement the hook */ }
+    for (const stage of chosenStages) {
+      try { stage.run(); } catch { /* subsystem may not implement the hook */ }
       engine.step();
       await yieldFrame();
       await compile();
@@ -284,11 +317,17 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
     tick();
   } finally {
     // Restore exactly what we found. Any residue here would be a visual change.
-    for (const reset of (transients ? [
+    for (const reset of (chosenStages.length ? [
       () => engine.ctx.peek('fx')?.debugBurst?.('none'),
       () => engine.ctx.peek('weapons')?.debugPose?.('idle'),
       () => engine.ctx.peek('ui')?.debugState?.('clean'),
       () => engine.ctx.peek('ai')?.debugStage?.('none'),
+      () => {
+        const h = engine.ctx.peek('player')?.health;
+        if (h?.__warmPrev === undefined) return;
+        h.value = h.__warmPrev;
+        delete h.__warmPrev;
+      },
     ] : [])) {
       try { reset(); } catch { /* optional hook */ }
     }

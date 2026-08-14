@@ -1,7 +1,7 @@
 /** Name every shader program that compiles while the trigger is held. */
 import { chromium } from 'playwright';
 
-const URL = process.argv[2] ?? 'http://127.0.0.1:5181/?map=swat&menu=0';
+const URL = process.argv[2] ?? 'http://127.0.0.1:5181/?map=holdout&menu=0';
 const b = await chromium.launch({ headless: true, args: ['--mute-audio'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 await p.goto(URL, { waitUntil: 'domcontentloaded' });

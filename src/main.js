@@ -188,7 +188,16 @@ const prewarmParam = params.get('prewarm');
 const wantPrewarm =
   prewarmParam === '1' || (prewarmParam !== '0' && config.map !== 'street');
 const warmup = wantPrewarm
-  ? await prewarm(engine)
+  /**
+   * `transients: 'lite'`. The transient stages — muzzle bursts, explosions,
+   * combat FX, fire/ADS poses, the combat HUD — default to OFF because they are
+   * not pixel-transparent, and for a long time nobody passed the flag. That gate
+   * is about the CAPTURE harness, not about play: with it off, `fx-distort`,
+   * `fx-haze-warp` and `player:lowhealth` compiled the first time the player
+   * pulled the trigger and the first time they were hurt. Measured with
+   * tools/fire-programs.mjs, and it is the stutter.
+   */
+  ? await prewarm(engine, { transients: capture ? false : 'lite' })
   : { ok: false, reason: `off for map "${config.map}" — ?prewarm=1 to force` };
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
