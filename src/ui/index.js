@@ -528,6 +528,10 @@ export class UiSystem {
     this.health.update(dt, s);
     this.ammo.update(dt, s);
     this.killfeed.update(dt);
+    // The active mode owns the score line. Merged here rather than pushed from
+    // the mode so a mode that is absent (tdm/sandbox) simply leaves the HUD's
+    // own defaults alone.
+    if (ctx?.match) Object.assign(s, ctx.match);
     this.matchBar.update(s);
     this.prompt.update(dt);
     this.banner.update(dt);

@@ -511,7 +511,9 @@ export class AiSystem {
       .filter((e) => e.d > 18);
     if (!ranked.length) return 0;
 
-    const variants = ['vanguard', 'irregular', 'breacher'];
+    // Overridable so a mode can garrison the level with something other than
+    // soldiers — Holdout sends ghouls at you, through this exact code path.
+    const variants = opts.variants ?? ['vanguard', 'irregular', 'breacher'];
     const squads = opts.squads ?? 2;
     const per = opts.perSquad ?? 3;
     let made = 0;

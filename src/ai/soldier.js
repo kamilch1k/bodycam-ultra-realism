@@ -104,6 +104,39 @@ const GEAR = {
  * dragging every piece of its kit out of the albedo budget.
  */
 export const VARIANTS = {
+  /**
+   * GHOUL — the horde body.
+   *
+   * Built from the same rig as every soldier, because a second character
+   * pipeline is not worth one game mode. What changes is entirely tints and
+   * flags: grey-green skin, no helmet, no goggles, no plate carrier, so the
+   * silhouette reads as a person who is NOT kitted — which at a glance is the
+   * whole tell. Slightly under scale and over bulk so they look hunched.
+   *
+   * HONEST LIMIT: it still carries a weapon and still uses the soldier
+   * behaviour tree, so it shoots rather than claws. A melee attack is new AI
+   * work, not a reskin, and pretending otherwise here would be a lie in a
+   * comment.
+   */
+  ghoul: {
+    camo: 'woodland',
+    clothTint: [0.62, 0.66, 0.58],
+    gearTint: [0.55, 0.56, 0.50],
+    plateTint: [0.58, 0.60, 0.54],
+    skinTint: [0.74, 0.86, 0.70],
+    helmet: false,
+    helmetCover: false,
+    helmetTint: [0.6, 0.6, 0.6],
+    goggles: false,
+    gogglesDown: false,
+    faceWrap: false,
+    beard: true,
+    kneePads: false,
+    fullCarrier: false,
+    weapon: 'carbine',
+    bulk: 1.12,
+    scale: 0.96,
+  },
   vanguard: {
     camo: 'arid',
     clothTint: [1.03, 1.0, 0.94],

@@ -10,6 +10,7 @@ import { PlayerSystem } from './player/index.js';
 import { WeaponSystem } from './weapons/index.js';
 import { FxSystem } from './fx/index.js';
 import { AiSystem } from './ai/index.js';
+import { ModeSystem } from './modes/index.js';
 import { UiSystem } from './ui/index.js';
 import { AudioSystem } from './audio/index.js';
 
@@ -115,6 +116,7 @@ engine
   .add(FxSystem)
   .add(AiSystem)
   .add(UiSystem)
+  .add(ModeSystem)
   .add(AudioSystem);
 
 try {
