@@ -241,7 +241,20 @@ export class NavGrid {
     const nx = this.nx;
     const gx = goal % nx, gz = (goal / nx) | 0;
     const cell = this.cell;
-    const maxNodes = opts.maxNodes ?? 6000;
+    /**
+     * The cap has to exceed the WALKABLE CELL COUNT, not be a round number.
+     *
+     * At 6000 it sat just under Holdout's 6532 walkable cells, so a path across
+     * the map could exhaust the budget and return zero — and a zero-length path
+     * is indistinguishable from "unreachable" to the caller, which then falls
+     * back to steering straight at the target and grinds into the nearest wall.
+     * An intermittent version of the same bug is the worst kind: it depends on
+     * how much of the grid the search happens to open.
+     *
+     * Derived from the grid so it cannot silently fall behind a bigger map
+     * again, with a floor for tiny ones.
+     */
+    const maxNodes = opts.maxNodes ?? Math.max(6000, (this.walkableCount || 0) * 2);
 
     this.stamp++;
     const stamp = this.stamp;
