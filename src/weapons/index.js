@@ -614,7 +614,8 @@ export class WeaponSystem {
       origin: this._muzzle,
       dir: this._dir,
       speed: def.muzzleVelocity,
-      damage: def.damage,
+      // Perk scalar applied at the point of use; nothing mutates the def.
+      damage: def.damage * (this.ctx.perks?.damageMult ?? 1),
       penetration: def.penetration,
       dragK: def.dragK,
       dropoff: def.dropoff,
@@ -631,7 +632,7 @@ export class WeaponSystem {
       p.addRecoil(pitch, yaw, def.recoil.roll * 0.18, def.recoil.punch);
     }
     this._spread = Math.min(def.spreadMax, this._spread + def.spreadPerShot);
-    this._fireTimer = 60 / def.rpm;
+    this._fireTimer = 60 / (def.rpm * (this.ctx.perks?.fireRateMult ?? 1));
     this._sinceShot = 0;
     this.stats.fired++;
     this._pendingShots++;

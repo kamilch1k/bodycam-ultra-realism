@@ -165,11 +165,16 @@ export class Health {
 
     // ---- regeneration ---------------------------------------------------
     const since = this.ctx.time.elapsed - this.lastDamageTime;
-    if (!this.dead && this.value < this.max && since > H.regenDelay) {
+    // Perks widen the ceiling and shorten the wait. Read every frame rather
+    // than latched on pickup, so a perk taken mid-regen applies immediately.
+    const perks = this.ctx?.perks;
+    if (perks) this.max = perks.maxHealth;
+    const delay = Math.max(0.8, H.regenDelay - (perks?.regenDelayCut ?? 0));
+    if (!this.dead && this.value < this.max && since > delay) {
       this.regenerating = true;
       // Ramp in so the recovery has a shape rather than a step.
-      const ramp = clamp01((since - H.regenDelay) / H.regenRamp);
-      this.value = Math.min(this.max, this.value + H.regenRate * ramp * dt);
+      const ramp = clamp01((since - delay) / H.regenRamp);
+      this.value = Math.min(this.max, this.value + H.regenRate * (perks?.regenMult ?? 1) * ramp * dt);
     } else if (this.value >= this.max) {
       this.regenerating = false;
     }

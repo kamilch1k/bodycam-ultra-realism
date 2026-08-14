@@ -203,11 +203,23 @@ class HordeMode extends BaseMode {
       this.announce('OVERRUN', `WAVE ${this.wave} · BEST ${this.best}`);
       this.clearAll();
       player.respawn?.();
+      // A run is over: perks reset with it, or wave 1 starts fully kitted.
+      this.ctx.events.emit('player:respawn', {});
       this.wave = 1;
       this.startBreak(6);
       return;
     }
     if (this.aliveCount() === 0) {
+      /**
+       * Drop the chest where the LAST body fell, not on a spawn point: the
+       * reward should be where the fight actually ended, which is also the one
+       * place the player already knows is clear.
+       */
+      const last = this.ai?.agents?.[this.ai.agents.length - 1];
+      this.ctx.events.emit('wave:cleared', {
+        wave: this.wave,
+        position: last?.position?.clone?.() ?? null,
+      });
       this.wave++;
       this.startBreak();
     }

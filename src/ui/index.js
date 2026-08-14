@@ -14,6 +14,7 @@ import { Prompt, Banner } from './prompts.js';
 import { PauseMenu } from './menu.js';
 import { Gunsmith } from './gunsmith.js';
 import { PerfHud } from './perfhud.js';
+import { PerkCard } from './perkcard.js';
 import { CombatDemo } from './demo.js';
 
 const MAX_BLIPS = 48;
@@ -98,6 +99,7 @@ export class UiSystem {
      * overlay that disappears exactly when you open a menu to look at it is
      * useless.
      */
+    this.perkCard = new PerkCard(this.chromeLayer, ctx);
     this.perf = new PerfHud(this.root);
     this._onPerfKey = (e) => {
       if (e.code !== 'F3') return;
@@ -665,6 +667,7 @@ export class UiSystem {
     this.prompt.dispose();
     this.banner.dispose();
     removeEventListener('keydown', this._onPerfKey);
+    this.perkCard.dispose();
     this.perf.dispose();
     this.menu.dispose();
     this.gunsmith.dispose();

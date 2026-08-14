@@ -11,6 +11,7 @@ import { WeaponSystem } from './weapons/index.js';
 import { FxSystem } from './fx/index.js';
 import { AiSystem } from './ai/index.js';
 import { ModeSystem } from './modes/index.js';
+import { PerkSystem } from './game/perks.js';
 import { UiSystem } from './ui/index.js';
 import { AudioSystem } from './audio/index.js';
 
@@ -117,6 +118,7 @@ engine
   .add(AiSystem)
   .add(UiSystem)
   .add(ModeSystem)
+  .add(PerkSystem)
   .add(AudioSystem);
 
 try {

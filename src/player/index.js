@@ -787,7 +787,7 @@ export class PlayerSystem {
         this.rig.onSlideStart(1);
         break;
       case 'air':
-        m.velocity.y = JUMP_SPEED;
+        m.velocity.y = this.ctx.perks?.jumpSpeed ?? JUMP_SPEED;
         m.grounded = false;
         break;
       case 'hurt':
