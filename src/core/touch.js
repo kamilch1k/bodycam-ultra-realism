@@ -68,9 +68,21 @@ export function isTouchDevice() {
   if (typeof window === 'undefined') return false;
   const coarse = window.matchMedia?.('(pointer: coarse)')?.matches;
   const touch = 'ontouchstart' in window || (navigator.maxTouchPoints ?? 0) > 0;
-  // maxTouchPoints alone is true on plenty of touch-capable laptops, where the
-  // player still has a mouse and would rather use it.
-  return !!(touch && coarse);
+  /**
+   * `any-pointer: fine` is the one that matters, and it has to be a veto.
+   *
+   * A touchscreen LAPTOP reports `pointer: coarse` and a non-zero
+   * maxTouchPoints while the player is using a mouse, so the previous test put
+   * it in touch mode — which switched on the aim assist. That assist is
+   * deliberately potent (26 deg acquire cone, 5.2 rad/s pull) because a thumb
+   * cannot track; applied to a mouse it grabs the view and swings it onto
+   * whoever is nearest, which reads as the camera randomly turning you around.
+   *
+   * If ANY attached pointer is fine, there is a mouse or a trackpad on this
+   * machine and the player gets the desktop game.
+   */
+  const hasFinePointer = window.matchMedia?.('(any-pointer: fine)')?.matches;
+  return !!(touch && coarse && !hasFinePointer);
 }
 
 export class TouchControls {

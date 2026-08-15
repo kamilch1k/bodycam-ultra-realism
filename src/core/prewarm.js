@@ -156,15 +156,26 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
    * the only programs compiling during play, so `'lite'` warms exactly them and
    * skips the expensive rest.
    */
-  const transientStages = [
-    { id: 'ai', run: () => engine.ctx.peek('ai')?.debugStage?.('firefight') },
-    { id: 'wall', run: () => engine.ctx.peek('fx')?.debugBurst?.('wall') },
-    { id: 'explosion', run: () => engine.ctx.peek('fx')?.debugBurst?.('explosion') },
-    { id: 'muzzle', run: () => engine.ctx.peek('fx')?.debugBurst?.('muzzle') },
-    { id: 'combat', run: () => engine.ctx.peek('fx')?.debugBurst?.('combat') },
-    { id: 'fire', run: () => engine.ctx.peek('weapons')?.debugPose?.('fire') },
-    { id: 'ads', run: () => engine.ctx.peek('weapons')?.debugPose?.('ads') },
-    { id: 'ui', run: () => engine.ctx.peek('ui')?.debugState?.('combat') },
+  const transientStages = (() => {
+
+    const fxOff = () => engine.ctx.peek('fx')?.debugBurst?.('none');
+    return [
+    { id: 'ai', run: () => engine.ctx.peek('ai')?.debugStage?.('firefight'),
+      reset: () => engine.ctx.peek('ai')?.debugStage?.('none') },
+    { id: 'wall', run: () => engine.ctx.peek('fx')?.debugBurst?.('wall'), reset: fxOff },
+    { id: 'explosion', run: () => engine.ctx.peek('fx')?.debugBurst?.('explosion'), reset: fxOff },
+    { id: 'muzzle', run: () => engine.ctx.peek('fx')?.debugBurst?.('muzzle'), reset: fxOff },
+    { id: 'combat', run: () => engine.ctx.peek('fx')?.debugBurst?.('combat'), reset: fxOff },
+    /**
+     * `debugPose('idle')` is NOT a neutral reset — it sets `debugMode = 'idle'`,
+     * and WeaponSystem gates firing on `debugMode === null`. Clear the field.
+     */
+    { id: 'fire', run: () => engine.ctx.peek('weapons')?.debugPose?.('fire'),
+      reset: () => { const w = engine.ctx.peek('weapons'); if (w) w.debugMode = null; } },
+    { id: 'ads', run: () => engine.ctx.peek('weapons')?.debugPose?.('ads'),
+      reset: () => { const w = engine.ctx.peek('weapons'); if (w) w.debugMode = null; } },
+    { id: 'ui', run: () => engine.ctx.peek('ui')?.debugState?.('combat'),
+      reset: () => engine.ctx.peek('ui')?.debugState?.('clean') },
     /**
      * The low-health pass sets `enabled` from health every frame, so it cannot
      * be forced on directly — it would be switched straight back off before it
@@ -179,10 +190,20 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
         h.__warmPrev = h.value;
         h.value = h.max * 0.12;
       },
+      reset: () => {
+        const h = engine.ctx.peek('player')?.health;
+        if (h?.__warmPrev === undefined) return;
+        h.value = h.__warmPrev;
+        delete h.__warmPrev;
+      },
     },
   ];
+  })();
 
   /** The cheap subset that covers every program measured compiling in play. */
+  /** Stages that actually executed, so only their resets run. */
+  const ranStages = [];
+
   const LITE = ['muzzle', 'lowhealth'];
   const chosenStages =
     transients === 'lite'
@@ -306,6 +327,7 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
     // Pass 2: spawn each subsystem's transient objects and compile those too.
     // Gated: see the `transients` option doc — this pass is not pixel-transparent.
     for (const stage of chosenStages) {
+      ranStages.push(stage);
       try { stage.run(); } catch { /* subsystem may not implement the hook */ }
       engine.step();
       await yieldFrame();
@@ -316,20 +338,21 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
     }
     tick();
   } finally {
-    // Restore exactly what we found. Any residue here would be a visual change.
-    for (const reset of (chosenStages.length ? [
-      () => engine.ctx.peek('fx')?.debugBurst?.('none'),
-      () => engine.ctx.peek('weapons')?.debugPose?.('idle'),
-      () => engine.ctx.peek('ui')?.debugState?.('clean'),
-      () => engine.ctx.peek('ai')?.debugStage?.('none'),
-      () => {
-        const h = engine.ctx.peek('player')?.health;
-        if (h?.__warmPrev === undefined) return;
-        h.value = h.__warmPrev;
-        delete h.__warmPrev;
-      },
-    ] : [])) {
-      try { reset(); } catch { /* optional hook */ }
+    /**
+     * Restore ONLY what was actually staged.
+     *
+     * This used to be a flat list run whenever the pass ran at all, which was
+     * harmless while the pass was all-or-nothing and became a hard bug the
+     * moment a SUBSET could run: `weapons.debugPose('idle')` fired even though
+     * no weapon pose had been staged, and `debugPose` sets `debugMode = 'idle'`
+     * — not null. `live` in WeaponSystem.update is gated on `debugMode === null`,
+     * so shooting and aiming were dead for the whole session.
+     *
+     * Pairing each reset with its own stage makes that unrepresentable: a reset
+     * cannot run for something that never happened.
+     */
+    for (const stage of ranStages) {
+      try { stage.reset?.(); } catch { /* optional hook */ }
     }
     cam.position.copy(saved.pos);
     cam.quaternion.copy(saved.quat);

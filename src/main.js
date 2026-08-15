@@ -209,6 +209,9 @@ window.__PREWARM__ = warmup;
  * so a desktop player never gets any of it.
  */
 const touchMode = params.get('touch') === '1' || (params.get('touch') !== '0' && isTouchDevice());
+// Printed because the aim assist rides on this flag, and a wrong answer here is
+// felt as the camera moving on its own rather than as a missing button.
+console.log(`[input] touch mode: ${touchMode} (aim assist ${touchMode ? 'ON' : 'off'})`);
 if (touchMode) {
   engine.input.touchMode = true;
   const controls = new TouchControls(document.body, engine.input);
