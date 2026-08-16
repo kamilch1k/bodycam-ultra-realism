@@ -240,6 +240,44 @@ const CSS = `
    sideways into another. Rows are explicit grids with an 8px gutter; the
    equipment counts get their own row above the weapon name rather than sharing
    the head row, which is what used to collide. */
+/* Level-up roll — directly under the compass, centred.
+   The top offset clears the compass (0.7 pad + 41px tape) with a small gap.
+   Explicitly pointer-events:none: this is a readout during live play, and it
+   sits over the middle of the screen where the player is aiming.
+   NOTE: no backticks anywhere in this file. It is one big JS template literal,
+   so a backtick in a CSS comment ends the string and the build fails. */
+.ow-roll {
+  position:absolute; left:50%; top: calc(var(--pad) * .7 + 52px * var(--k));
+  transform: translateX(-50%);
+  width: calc(300px * var(--k));
+  text-align:center; pointer-events:none;
+  transition: opacity .18s linear;
+}
+.ow-roll-tag {
+  font: 700 calc(10px * var(--k))/1 var(--ow-font);
+  letter-spacing:.16em; color:#ffc23a;
+  text-shadow:0 1px 3px rgba(0,0,0,.9);
+}
+.ow-roll-name {
+  font: 800 calc(19px * var(--k))/1.15 var(--ow-font);
+  letter-spacing:.03em; color:#fff;
+  text-shadow:0 2px 6px rgba(0,0,0,.95);
+  margin-top: calc(3px * var(--k));
+}
+.ow-roll-sub {
+  font: 600 calc(11px * var(--k))/1.2 var(--ow-font);
+  color:rgba(255,255,255,.82);
+  text-shadow:0 1px 4px rgba(0,0,0,.9);
+  margin-top: calc(2px * var(--k));
+  min-height: calc(13px * var(--k));
+}
+/* The drop-in, and the punch when the reel locks. Transform-only so neither
+   animation costs a layout while the game is running underneath. */
+@keyframes ow-roll-in { from { transform:translateY(calc(-7px * var(--k))); opacity:0 } to { transform:none; opacity:1 } }
+.ow-roll-in { animation: ow-roll-in .2s ease-out both; }
+@keyframes ow-roll-hit { 0% { transform:scale(1.18) } 60% { transform:scale(.98) } 100% { transform:none } }
+.ow-roll-hit .ow-roll-name { animation: ow-roll-hit .3s ease-out both; color:#ffd76a; }
+
 /* Survivor readout — bottom left, mirroring the ammo panel opposite it. */
 .ow-surv {
   position:absolute; left:var(--pad); bottom:var(--pad);

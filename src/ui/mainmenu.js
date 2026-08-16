@@ -33,7 +33,16 @@ import { MENU_BG } from './menubg.js';
  * game, on the one screen where CrazyGames measures whether they stay. Fast
  * maps first, `street` kept but demoted to what it is: the big one.
  */
-export const MAPS = [{ id: 'miami' }, { id: 'zone' }, { id: 'holdout' }, { id: 'strike' }];
+/**
+ * TWO MAPS, and only these two.
+ *
+ * `holdout` and `strike` still build and still load via `?map=`, but they are
+ * the older arenas: they never got the lighting and palette pass these two did,
+ * so next to Miami they are the grey concrete the whole look was fixed to get
+ * away from. Shipping them would put the weakest thing in the game one click
+ * from the front page. Re-add an entry here when a map has had the pass.
+ */
+export const MAPS = [{ id: 'miami' }, { id: 'zone' }];
 
 /**
  * Two modes, one map each, and the map list is now those two maps. Five maps

@@ -46,6 +46,7 @@ import { NavGrid, CoverMap } from './nav.js';
 import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
+import { prewarmFaces } from './billboard.js';
 
 export class AiSystem {
   static id = 'ai';
@@ -212,6 +213,9 @@ export class AiSystem {
     const t0 = performance.now();
     const out = { ok: false, materials: 0, programs: 0, ms: 0 };
     this._prewarmed = out;
+    // The flat enemies' faces: eight canvas draws and eight uploads, done here
+    // so the wave that first fields one does not draw them mid-fight.
+    prewarmFaces(this.ctx.peek('render')?.renderer ?? null);
     try {
       const mats = [];
       const seen = new Set();

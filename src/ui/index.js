@@ -7,6 +7,7 @@ import { DamageArcs } from './damage.js';
 import { HealthFx } from './health.js';
 import { AmmoPanel } from './ammo.js';
 import { SurvivorPanel } from './survivor.js';
+import { LevelRoll } from './levelroll.js';
 import { Killfeed } from './killfeed.js';
 import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
@@ -102,6 +103,8 @@ export class UiSystem {
      * useless.
      */
     this.perkCard = new PerkCard(this.chromeLayer, ctx);
+    // Non-modal level-up readout, under the compass. See levelroll.js.
+    this.levelRoll = new LevelRoll(this.chromeLayer);
     this.perf = new PerfHud(this.root);
     this._onPerfKey = (e) => {
       if (e.code !== 'F3') return;
@@ -575,6 +578,7 @@ export class UiSystem {
     this.health.update(dt, s);
     this.ammo.update(dt, s);
     this.surv.update(dt, ctx.perks);
+    this.levelRoll.update(dt);
     this.killfeed.update(dt);
     // The active mode owns the score line. Merged here rather than pushed from
     // the mode so a mode that is absent (tdm/sandbox) simply leaves the HUD's
@@ -700,6 +704,7 @@ export class UiSystem {
     this.banner.dispose();
     removeEventListener('keydown', this._onPerfKey);
     this.perkCard.dispose();
+    this.levelRoll.dispose();
     this.perf.dispose();
     this.menu.dispose();
     this.gunsmith.dispose();

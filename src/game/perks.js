@@ -188,6 +188,12 @@ export class Perks {
  *  PICKUPS
  * ====================================================================== */
 
+/**
+ * Seconds between consecutive level-up rolls. Long enough that two levels read
+ * as two events, short enough that a backlog drains while it still matters.
+ */
+const ROLL_SPACING = 0.75;
+
 /** How far a pickup floats above the ground point it was placed on. */
 const CHEST_Y = 0.55;
 
@@ -212,17 +218,38 @@ export const PICKUPS = {
  * readable across a 60 m map at a glance, and the thing that makes it readable
  * is that it GLOWS and BOBS, not that it has hinges.
  */
+/**
+ * ONE geometry and ONE material per kind, for every pickup ever spawned.
+ *
+ * These used to be built per drop and then only ever removed from the scene —
+ * `parent.remove()` unhooks a mesh but disposes nothing — so each pickup leaked
+ * a geometry and a material for the rest of the session. Measured at 10 fresh
+ * geometries per 10 drops with no ceiling, and drops are on a kill, so a long
+ * run bled GPU objects continuously. That is what the harsh late-run stutter
+ * was: not one expensive event, an ever-growing pile.
+ *
+ * Sharing removes both the allocation and the need to dispose anything, since
+ * a mesh holding a borrowed geometry owns nothing. Prewarmed at boot too, so
+ * the first drop of a run does not pay the compile.
+ */
+const PICKUP_GEO = {};
+const PICKUP_MAT = {};
+
+export function prewarmPickups() {
+  for (const kind of Object.keys(PICKUPS)) makePickup(kind);
+}
+
 function makePickup(kind) {
   const spec = PICKUPS[kind] ?? PICKUPS.chest;
-  const g = new THREE.BoxGeometry(...spec.size);
-  const m = new THREE.MeshStandardMaterial({
+  PICKUP_GEO[kind] ??= new THREE.BoxGeometry(...spec.size);
+  PICKUP_MAT[kind] ??= new THREE.MeshStandardMaterial({
     color: spec.color,
     emissive: spec.emissive,
     emissiveIntensity: 1.5,
     roughness: 0.45,
     metalness: 0.1,
   });
-  const mesh = new THREE.Mesh(g, m);
+  const mesh = new THREE.Mesh(PICKUP_GEO[kind], PICKUP_MAT[kind]);
   mesh.name = `pickup-${kind}`;
   mesh.userData.kind = kind;
   mesh.castShadow = false;
@@ -243,7 +270,7 @@ export class PerkSystem {
     this._v = new THREE.Vector3();
     /** Levels earned but not yet spent — the card is modal, kills are not. */
     this._queue = 0;
-    this._cardUp = false;
+    this._rollCd = 0;
 
     // A chest per wave, dropped where the wave died rather than on a schedule:
     // the reward should be where the fight was.
@@ -293,7 +320,7 @@ export class PerkSystem {
   reset() {
     this.perks.reset();
     this._queue = 0;
-    this._cardUp = false;
+    this._rollCd = 0;
     for (const c of this.chests) c.parent?.remove(c);
     this.chests.length = 0;
   }
@@ -342,6 +369,12 @@ export class PerkSystem {
 
   update(dt) {
     this._t += dt;
+
+    // Drain queued level-ups on a timer rather than all at once. Nothing here
+    // blocks, so this runs while the player keeps fighting.
+    if (this._rollCd > 0) this._rollCd -= dt;
+    if (this._rollCd <= 0 && this._queue > 0) this._offerNext();
+
     if (!this.chests.length) return;
     const player = this.ctx.peek('player');
     const pos = player?.position;
@@ -370,37 +403,55 @@ export class PerkSystem {
    * a queue one card at a time is the whole fix.
    */
   _offerNext() {
-    if (this._cardUp || this._queue <= 0) return;
-    const ui = this.ctx.peek('ui');
+    if (this._rollCd > 0 || this._queue <= 0) return;
     const ids = this.perks.roll(this.ctx.rng);
     if (!ids.length) {
-      this._queue = 0; // everything is maxed; stop pretending there is a choice
+      this._queue = 0; // everything is maxed; stop pretending there is a reward
       return;
     }
     this._queue--;
-    if (!ui?.perkCard) {
-      // No UI (capture harness, headless probe): take the first rather than
-      // dropping the reward on the floor.
-      this.perks.take(ids[0]);
-      this._offerNext();
-      return;
-    }
-    this._cardUp = true;
-    ui.perkCard.show(
-      ids.map((id) => ({ id, label: PERKS[id].label, desc: PERKS[id].desc(this.perks.level[id] + 1) })),
-      (id) => {
-        this.perks.take(id);
-        this._cardUp = false;
-        this._offerNext();
-      },
-      `LEVEL ${this.perks.plevel}`
+
+    /**
+     * GRANTED FIRST, SHOWN SECOND — and never asked about.
+     *
+     * The upgrade is applied immediately, before anything is drawn, so the reel
+     * under the compass is a readout of something that has already happened
+     * rather than a prompt the game is waiting on. That ordering is what lets
+     * the whole thing be non-blocking: there is no state where play is paused
+     * pending a decision, because there is no decision.
+     */
+    const id = ids[0];
+    this.perks.take(id);
+
+    const ui = this.ctx.peek('ui');
+    ui?.levelRoll?.show?.(
+      `LEVEL ${this.perks.plevel}`,
+      PERKS[id].label,
+      PERKS[id].desc(this.perks.level[id]),
+      ids.map((x) => PERKS[x].label)
     );
+
+    /**
+     * Space consecutive levels out instead of drawing them on one frame. A
+     * grenade can level you twice at once, and two rolls starting together
+     * would show one of them for a single frame.
+     */
+    this._rollCd = ROLL_SPACING;
   }
 
   /** Kept for callers that just want "give me an upgrade now". */
   offer() {
     this._queue++;
     this._offerNext();
+  }
+
+  /**
+   * Called by core/prewarm.js. Builds the shared pickup geometry and materials
+   * at boot so the first drop of a run is not the frame that compiles them.
+   */
+  prewarmMaterials() {
+    prewarmPickups();
+    return { ok: true, materials: Object.keys(PICKUPS).length };
   }
 
   dispose() {

@@ -103,10 +103,24 @@ export function makeFaceTexture(seed = 0) {
  * on death to build the ragdoll, so deleting it would break dying. Returns the
  * sprite so the caller can drop it when the agent is cleaned up.
  */
-export function attachBillboard(group, { seed = 0, height = 1.85 } = {}) {
-  const map = makeFaceTexture(seed);
-  const mat = new THREE.SpriteMaterial({
-    map,
+/**
+ * A FIXED SET OF FACES, drawn once and shared.
+ *
+ * Every flat enemy used to draw its own canvas and upload its own texture at
+ * spawn — measured at four fresh textures per wave, forever, on top of a 130 ms
+ * first spawn. Nothing disposed them either, so a long run accumulated a
+ * texture per body. Eight faces is already more variety than anyone reads in a
+ * firefight, and a shared SpriteMaterial batches instead of breaking the draw
+ * call per enemy. Scale and position are per-sprite, so bodies still differ in
+ * size; only the drawing is shared.
+ */
+const FACE_COUNT = 8;
+const FACES = [];
+
+function faceMaterial(seed) {
+  const i = ((seed % FACE_COUNT) + FACE_COUNT) % FACE_COUNT;
+  FACES[i] ??= new THREE.SpriteMaterial({
+    map: makeFaceTexture(i),
     transparent: true,
     // Cut-outs, not smoke: a soft alpha edge on something this big reads as a
     // ghost, and it would also sort badly against every other transparent thing.
@@ -114,7 +128,27 @@ export function attachBillboard(group, { seed = 0, height = 1.85 } = {}) {
     depthWrite: true,
     toneMapped: true,
   });
-  const sprite = new THREE.Sprite(mat);
+  return FACES[i];
+}
+
+/**
+ * Draw and upload all eight at boot, so no wave pays for one mid-fight.
+ *
+ * `renderer` is not optional in practice. Creating a CanvasTexture only builds
+ * the image — the GPU upload is deferred to the first draw that samples it, so
+ * a prewarm without `initTexture` moves the canvas work to boot and leaves the
+ * uploads exactly where they were. Measured: still four uploads on wave one and
+ * four more on wave two until this was added.
+ */
+export function prewarmFaces(renderer = null) {
+  for (let i = 0; i < FACE_COUNT; i++) {
+    const mat = faceMaterial(i);
+    renderer?.initTexture?.(mat.map);
+  }
+}
+
+export function attachBillboard(group, { seed = 0, height = 1.85 } = {}) {
+  const sprite = new THREE.Sprite(faceMaterial(seed));
   sprite.scale.setScalar(height);
   sprite.position.y = height * 0.55;
   sprite.name = 'flat-enemy';
