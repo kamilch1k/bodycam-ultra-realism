@@ -198,6 +198,17 @@ const ROLL_SPACING = 0.75;
 const CHEST_Y = 0.55;
 
 /**
+ * Seconds a dropped pickup survives, and the most that may exist at once.
+ *
+ * 45 s is long enough to finish the fight you are in and then go and get it,
+ * which is the decision a drop is supposed to create. 20 is well above what a
+ * player can have in flight during a normal wave, so the cap only ever catches
+ * the runaway case.
+ */
+const PICKUP_TTL = 45;
+const PICKUP_MAX = 20;
+
+/**
  * The drop table.
  *
  * `chance` is the per-kill probability, and they are deliberately low enough that
@@ -348,7 +359,27 @@ export class PerkSystem {
       p = spawns.length ? spawns[(Math.random() * spawns.length) | 0].position : null;
     }
     if (!p) return;
+
+    /**
+     * A HARD CAP, oldest first.
+     *
+     * Pickups had no lifetime, so every one the player never walked over stayed
+     * for the rest of the run. Measured over 20 waves: 110 of them still on the
+     * map, and the scene node count climbing 22 a wave with no ceiling. They are
+     * cheap individually — a shared geometry and one draw call — but each one is
+     * also bobbed and spun and distance-checked every single frame, so the cost
+     * is per-frame and it only goes up.
+     *
+     * A cap rather than only a timer because the cap is what actually bounds
+     * the work: a bad run can drop faster than the timer clears them.
+     */
+    while (this.chests.length >= PICKUP_MAX) {
+      const old = this.chests.shift();
+      old.parent?.remove(old);
+    }
+
     const mesh = makePickup(kind);
+    mesh.userData.born = this._t;
     mesh.position.set(p.x, p.y + CHEST_Y, p.z);
     mesh.userData.baseY = mesh.position.y;
     ctx.scene.add(mesh);
@@ -382,6 +413,15 @@ export class PerkSystem {
 
     for (let i = this.chests.length - 1; i >= 0; i--) {
       const c = this.chests[i];
+
+      // Expire. A drop from six waves ago is not a reward any more, it is a
+      // scene node being animated forever for nothing.
+      if (this._t - (c.userData.born ?? 0) > PICKUP_TTL) {
+        c.parent?.remove(c);
+        this.chests.splice(i, 1);
+        continue;
+      }
+
       // Bob and spin — the entire reason it reads as a pickup and not as scenery.
       c.position.y = c.userData.baseY + Math.sin(this._t * 2.2) * 0.09;
       c.rotation.y += dt * 1.1;
