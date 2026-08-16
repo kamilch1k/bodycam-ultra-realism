@@ -1,0 +1,187 @@
+/**
+ * PROFILE ACTUAL PLAY — moving, turning, shooting — frame by frame.
+ *
+ * Every other tool here measures a single event (a spawn, a drop, a wave). A
+ * stutter is not an event, it is a frame that took too long while the player
+ * was doing something, so this drives the real input path — WASD held, the view
+ * swinging, the trigger down in bursts, waves arriving — and records what every
+ * subsystem cost on every one of ~1800 frames.
+ *
+ * WHAT IS TRUSTWORTHY HERE, since it decides what the output may be used for:
+ *
+ *   CPU time per system     yes. It is the same JavaScript on the same V8, and
+ *                           a system that spikes to 40 ms of scripting spikes
+ *                           on real hardware too.
+ *   program/geometry/texture
+ *   deltas on a given frame yes, and these are the classic stutter: a shader
+ *                           compiled the first time you fire is a real stall.
+ *   `render` system time    NO. Headless is a software rasteriser with no GPU;
+ *                           its draw cost is fiction and is reported separately
+ *                           so it never contaminates the CPU ranking.
+ *
+ *   node tools/playprofile.mjs [frames]
+ */
+import { chromium } from 'playwright';
+
+const FRAMES = Number(process.argv[2] ?? 1800);
+
+const b = await chromium.launch({ headless: true, args: ['--mute-audio'] });
+const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+const errors = [];
+p.on('pageerror', (e) => errors.push(e.message.split('\n')[0]));
+p.on('console', (m) => {
+  if (m.type() === 'error') errors.push(m.text().slice(0, 160));
+});
+await p.goto('http://127.0.0.1:5181/?map=miami&menu=0&q=high', { waitUntil: 'domcontentloaded' });
+await p.waitForFunction('!!window.__ENGINE__', null, { timeout: 600000 });
+await p.waitForTimeout(3000);
+
+const out = await p.evaluate(async (frames) => {
+  const e = window.__ENGINE__;
+  const ctx = e.ctx;
+  const ai = ctx.peek('ai');
+  const input = ctx.input;
+  const render = ctx.peek('render');
+  const player = ctx.peek('player');
+
+  player?.setControlEnabled?.(true);
+
+  /**
+   * Drive the REAL input path rather than teleporting the camera.
+   *
+   * Moving the player object directly would skip collision, the character
+   * controller, footsteps, the weapon sway and the animation — i.e. most of the
+   * per-frame work a stutter could be hiding in. Holding keys and feeding look
+   * deltas exercises all of it.
+   *
+   * `look` is recomputed inside beginFrame from accumulated mouse deltas, so it
+   * has to be written AFTER that runs — hence the wrapper rather than a plain
+   * assignment before step().
+   */
+  const script = { lookX: 0, lookY: 0 };
+  const realBegin = input.beginFrame.bind(input);
+  input.beginFrame = (dt) => {
+    realBegin(dt);
+    input.look.x = script.lookX;
+    input.look.y = script.lookY;
+  };
+
+  const samples = [];
+  const info = () => {
+    const i = render.renderer.info;
+    return { tex: i.memory.textures, geo: i.memory.geometries, prog: i.programs?.length ?? 0 };
+  };
+
+  let prev = info();
+  let t = performance.now();
+  let nextWave = 120;
+
+  for (let f = 0; f < frames; f++) {
+    // ---- scripted play -----------------------------------------------------
+    // A lap of the deck: strafe pattern changes every ~2 s so the character
+    // controller keeps meeting new geometry instead of settling into a corner.
+    input.down.delete('KeyW');
+    input.down.delete('KeyA');
+    input.down.delete('KeyS');
+    input.down.delete('KeyD');
+    const leg = Math.floor(f / 120) % 4;
+    input.down.add(['KeyW', 'KeyD', 'KeyS', 'KeyA'][leg]);
+    if (f % 240 < 8) input.down.add('Space');
+    else input.down.delete('Space');
+
+    // Sweep the view continuously, with a fast flick every few seconds — a
+    // flick is when a shadow cascade or a new bit of level first becomes
+    // visible, which is exactly when a lazy compile lands.
+    script.lookX = Math.sin(f * 0.01) * 0.9 + (f % 300 < 6 ? 7 : 0);
+    script.lookY = Math.sin(f * 0.004) * 0.25;
+
+    // Fire in bursts: 40 frames on, 40 off.
+    if (f % 80 < 40) input.down.add('Mouse0');
+    else input.down.delete('Mouse0');
+
+    if (f >= nextWave) {
+      ai.populate({ squads: 3, perSquad: 4, variants: ['ghoul', 'runt', 'flatty'] });
+      nextWave += 360;
+    }
+
+    // ---- the measured step -------------------------------------------------
+    const t0 = performance.now();
+    e.step((t += 16.6));
+    const total = performance.now() - t0;
+
+    const now = info();
+    const sys = {};
+    for (const [k, v] of e._sysMs ?? []) sys[k] = v;
+    samples.push({
+      f,
+      total,
+      sys,
+      dTex: now.tex - prev.tex,
+      dGeo: now.geo - prev.geo,
+      dProg: now.prog - prev.prog,
+    });
+    prev = now;
+  }
+
+  return {
+    samples,
+    finalPos: player?.position ? [player.position.x, player.position.y, player.position.z] : null,
+    dead: !!player?.dead,
+  };
+}, FRAMES);
+
+await b.close();
+
+const s = out.samples;
+const pct = (arr, q) => arr.slice().sort((a, c) => a - c)[Math.floor(arr.length * q)] ?? 0;
+
+// Rank systems by CPU cost, render excluded — see the header note.
+const names = new Set();
+for (const x of s) for (const k of Object.keys(x.sys)) names.add(k);
+names.delete('render');
+
+console.log(`${s.length} frames of scripted play (move + look + fire + waves)\n`);
+console.log('  system        p50      p95      p99      max     share');
+const rows = [];
+for (const n of names) {
+  const v = s.map((x) => x.sys[n] ?? 0);
+  const sum = v.reduce((a, c) => a + c, 0);
+  rows.push({ n, p50: pct(v, 0.5), p95: pct(v, 0.95), p99: pct(v, 0.99), max: Math.max(...v), sum });
+}
+const grand = rows.reduce((a, r) => a + r.sum, 0) || 1;
+for (const r of rows.sort((a, c) => c.sum - a.sum).slice(0, 12)) {
+  console.log(
+    `  ${r.n.padEnd(11)} ${r.p50.toFixed(2).padStart(7)} ${r.p95.toFixed(2).padStart(8)} ` +
+      `${r.p99.toFixed(2).padStart(8)} ${r.max.toFixed(1).padStart(8)}   ${((r.sum / grand) * 100).toFixed(1).padStart(5)}%`
+  );
+}
+
+// The frames that would actually be felt, and what was happening on them.
+const cpu = s.map((x) => Object.entries(x.sys).reduce((a, [k, v]) => a + (k === 'render' ? 0 : v), 0));
+console.log(`\nCPU per frame (render excluded): p50 ${pct(cpu, 0.5).toFixed(2)} ms  p95 ${pct(cpu, 0.95).toFixed(2)}  p99 ${pct(cpu, 0.99).toFixed(2)}  max ${Math.max(...cpu).toFixed(1)}`);
+
+const ranked = s
+  .map((x, i) => ({ ...x, cpu: cpu[i] }))
+  .sort((a, c) => c.cpu - a.cpu)
+  .slice(0, 12);
+console.log('\nworst CPU frames — what dominated, and what was allocated:');
+for (const x of ranked) {
+  const top = Object.entries(x.sys)
+    .filter(([k]) => k !== 'render')
+    .sort((a, c) => c[1] - a[1])
+    .slice(0, 3)
+    .map(([k, v]) => `${k} ${v.toFixed(1)}`)
+    .join(', ');
+  const alloc = [x.dProg ? `+${x.dProg} prog` : '', x.dTex ? `+${x.dTex} tex` : '', x.dGeo ? `+${x.dGeo} geo` : '']
+    .filter(Boolean)
+    .join(' ');
+  console.log(`  f${String(x.f).padStart(5)}  ${x.cpu.toFixed(1).padStart(6)} ms   ${top}${alloc ? '   [' + alloc + ']' : ''}`);
+}
+
+// Any frame that compiled a program is a guaranteed real-hardware stall.
+const compiles = s.filter((x) => x.dProg > 0);
+console.log(`\nframes that compiled a shader mid-play: ${compiles.length}`);
+for (const c of compiles.slice(0, 10)) console.log(`  f${c.f}  +${c.dProg} programs`);
+
+console.log(`\nplayer ended at ${out.finalPos?.map((v) => v.toFixed(1)).join(', ')}  dead=${out.dead}`);
+if (errors.length) console.log(`page errors (${errors.length}): ${errors.slice(0, 3).join(' | ')}`);
