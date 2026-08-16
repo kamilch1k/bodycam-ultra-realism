@@ -33,7 +33,7 @@ import { MENU_BG } from './menubg.js';
  * game, on the one screen where CrazyGames measures whether they stay. Fast
  * maps first, `street` kept but demoted to what it is: the big one.
  */
-export const MAPS = [{ id: 'strike' }, { id: 'holdout' }];
+export const MAPS = [{ id: 'miami' }, { id: 'zone' }, { id: 'holdout' }, { id: 'strike' }];
 
 /**
  * Two modes, one map each, and the map list is now those two maps. Five maps

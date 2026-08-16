@@ -8,6 +8,12 @@ export const PHYSICS_HZ = 120;
 export const FIXED_DT = 1 / PHYSICS_HZ;
 /** Never simulate more than this many physics steps in one frame (spiral-of-death guard). */
 export const MAX_SUBSTEPS = 8;
+/**
+ * Longest frame the simulation will believe, in seconds. Six fixed steps — kept
+ * under MAX_SUBSTEPS on purpose, so catch-up is bounded by this clamp and not by
+ * the backlog-shedding branch. See the note in Engine.step.
+ */
+export const MAX_FRAME_DT = 0.05;
 
 /** Real-world units are metres, seconds, kilograms. */
 export const UNITS = {

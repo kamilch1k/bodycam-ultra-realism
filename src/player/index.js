@@ -320,6 +320,90 @@ export class PlayerSystem {
     this.lowHealthPass?.sync(this.health);
     this._syncHitbox();
     this._publishState();
+    this._reportWarp(dt, ctx);
+  }
+
+  /**
+   * Report the player teleporting, or the view turning with nothing driving it.
+   *
+   * Both are DISCONTINUITIES, which means they can be defined rather than
+   * eyeballed: a position step far larger than `velocity * dt` explains, or a
+   * yaw step with no mouse, stick or recoil to account for it. Each report
+   * carries the state that produced it, because the useful question is never
+   * "did it jump" but "what wrote to it" — mantle, step-up, depenetration and
+   * recoil all move the player legitimately and are indistinguishable from a bug
+   * once the frame is over.
+   *
+   * Lives in the shipping build for the same reason the hitch log does: this
+   * only reproduces on a real machine, with a real mouse, at a real frame rate.
+   */
+  _reportWarp(dt, ctx) {
+    const m = this.movement;
+    const prev = this._warpPrev;
+    const p = m.position;
+    if (!prev) {
+      this._warpPrev = { x: p.x, y: p.y, z: p.z, yaw: m.yaw, pitch: m.pitch, n: 0 };
+      return;
+    }
+    if (dt > 1e-6 && prev.n < 25 && ctx.time.scale > 0) {
+      const v = m.velocity;
+      const speed = Math.hypot(v.x, v.y, v.z);
+      const moved = Math.hypot(p.x - prev.x, p.y - prev.y, p.z - prev.z);
+      const budget = speed * dt * 3 + 0.15;
+      if (moved > budget) {
+        prev.n++;
+        console.warn(
+          `[warp] moved ${moved.toFixed(2)}m in one frame (velocity explains ${budget.toFixed(2)}m)` +
+            `  dt ${(dt * 1000).toFixed(0)}ms  steps ${ctx.time.steps}` +
+            `  state=${m.state}  mantle=${!!m.mantleMotion?.active}` +
+            `  grounded=${!!m.grounded}  stepped=${!!m.character?.steppedUp}` +
+            `  blocked=${!!m.character?.lastMoveBlocked}`
+        );
+      }
+      /**
+       * PITCH COUNTS TOO. The first version of this watched yaw only, and the
+       * reported symptom was the view snapping to point straight up — a pitch
+       * slam, which it could not see at all.
+       *
+       * And the input-driven case must be REPORTED, not excluded. Skipping any
+       * frame where `look` was large assumes a large input is a legitimate one,
+       * which is precisely the thing in question: the per-frame clamp still
+       * permits a big delta, so an absurd pointer spike looks "explained" to a
+       * test that only asks whether input existed. The two cases are different
+       * bugs and both need naming, so the branch splits on which it is.
+       */
+      const dYaw = Math.abs(((m.yaw - prev.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const dPitch = Math.abs(m.pitch - prev.pitch);
+      const swing = Math.max(dYaw, dPitch);
+      if (swing > 0.35) {
+        const look = ctx.input.look;
+        const lookMag = Math.hypot(look.x, look.y);
+        const stick = Math.abs(ctx.input.stick?.lookX ?? 0) + Math.abs(ctx.input.stick?.lookY ?? 0);
+        const recoil = Math.abs(this._recoilCarry?.yaw ?? 0) + Math.abs(this._recoilCarry?.pitch ?? 0);
+        const deg = (r) => ((r * 180) / Math.PI).toFixed(0);
+        prev.n++;
+        if (lookMag > 1e-4) {
+          console.warn(
+            `[warp] POINTER SPIKE: view swung yaw ${deg(dYaw)} pitch ${deg(dPitch)} degrees` +
+              `  from look ${look.x.toFixed(3)},${look.y.toFixed(3)} rad` +
+              `  (raw ${(look.x / (ctx.config.sensitivity || 1)).toFixed(0)} counts)` +
+              `  clamped=${ctx.input.lookClamped}  dt ${(dt * 1000).toFixed(0)}ms`
+          );
+        } else {
+          const pads = (navigator.getGamepads?.() ?? []).filter(Boolean).length;
+          console.warn(
+            `[warp] NO INPUT: view swung yaw ${deg(dYaw)} pitch ${deg(dPitch)} degrees` +
+              `  stick=${stick.toFixed(4)}  recoil=${recoil.toFixed(4)}  gamepads=${pads}` +
+              `  mantle=${!!m.mantleMotion?.active}  assist=${!!this.assist?.enabled}`
+          );
+        }
+      }
+    }
+    prev.x = p.x;
+    prev.y = p.y;
+    prev.z = p.z;
+    prev.yaw = m.yaw;
+    prev.pitch = m.pitch;
   }
 
   /** Keep the AI-facing hitbox on the interpolated capsule. */

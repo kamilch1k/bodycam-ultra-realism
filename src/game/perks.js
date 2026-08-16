@@ -67,6 +67,21 @@ export const PERKS = {
   },
 };
 
+/**
+ * Kills needed for the next level.
+ *
+ * Flat-per-level would make the tenth upgrade as cheap as the first while the
+ * waves get bigger, so the run peaks early and then just repeats. Growing the
+ * cost keeps the shape of the genre: fast, obvious change at the start, and a
+ * later run where a level is an event. The numbers are small on purpose —
+ * 4 kills to the first upgrade means wave one already changes the run.
+ */
+const XP_BASE = 4;
+const XP_STEP = 2;
+
+/** Plate capacity. One armour pickup is a bit under half of it. */
+const ARMOR_MAX = 100;
+
 export class Perks {
   constructor() {
     this.level = {};
@@ -75,6 +90,41 @@ export class Perks {
 
   reset() {
     for (const id of Object.keys(PERKS)) this.level[id] = 0;
+    this.xp = 0;
+    this.plevel = 1;
+    this.armor = 0;
+    this.kills = 0;
+  }
+
+  get xpToNext() {
+    return XP_BASE + (this.plevel - 1) * XP_STEP;
+  }
+
+  get armorMax() {
+    return ARMOR_MAX;
+  }
+
+  addArmor(n) {
+    const add = Math.min(n, ARMOR_MAX - this.armor);
+    this.armor += add;
+    return add;
+  }
+
+  /**
+   * Credit a kill. Returns how many levels it caused, which is nearly always 0
+   * or 1 but can be more if a perk offer was pending while a crowd died — the
+   * caller queues them rather than dropping the extras on the floor.
+   */
+  addXp(n = 1) {
+    this.kills += n;
+    this.xp += n;
+    let gained = 0;
+    while (this.xp >= this.xpToNext) {
+      this.xp -= this.xpToNext;
+      this.plevel++;
+      gained++;
+    }
+    return gained;
   }
 
   take(id) {
@@ -135,28 +185,46 @@ export class Perks {
 }
 
 /* ====================================================================== *
- *  CHESTS
+ *  PICKUPS
  * ====================================================================== */
 
-/** How far a chest floats above the ground point it was placed on. */
+/** How far a pickup floats above the ground point it was placed on. */
 const CHEST_Y = 0.55;
 
 /**
- * A supply chest. Deliberately a single emissive box rather than a model: it has
- * to be readable across a 60 m map at a glance, and the thing that makes it
- * readable is that it GLOWS and BOBS, not that it has hinges.
+ * The drop table.
+ *
+ * `chance` is the per-kill probability, and they are deliberately low enough that
+ * the sum is under a third: a pickup has to be worth crossing the map for, and
+ * something that drops off every second body is just a slower reload. Colour is
+ * the entire identity of these things at 40 m, so the three are as far apart on
+ * the wheel as the palette allows — gold, blue, orange.
  */
-function makeChest() {
-  const g = new THREE.BoxGeometry(0.7, 0.55, 0.5);
+export const PICKUPS = {
+  ammo: { chance: 0.16, color: 0xffe14a, emissive: 0xffab00, size: [0.5, 0.34, 0.36] },
+  armor: { chance: 0.1, color: 0x5ad1ff, emissive: 0x1470c8, size: [0.46, 0.56, 0.22] },
+  /** The instant upgrade. Rare, because it skips the whole XP economy. */
+  chest: { chance: 0.035, color: 0xffc23a, emissive: 0xff8c1a, size: [0.7, 0.55, 0.5] },
+};
+
+/**
+ * A pickup. Deliberately a single emissive box rather than a model: it has to be
+ * readable across a 60 m map at a glance, and the thing that makes it readable
+ * is that it GLOWS and BOBS, not that it has hinges.
+ */
+function makePickup(kind) {
+  const spec = PICKUPS[kind] ?? PICKUPS.chest;
+  const g = new THREE.BoxGeometry(...spec.size);
   const m = new THREE.MeshStandardMaterial({
-    color: 0xffc23a,
-    emissive: 0xff8c1a,
+    color: spec.color,
+    emissive: spec.emissive,
     emissiveIntensity: 1.5,
     roughness: 0.45,
     metalness: 0.1,
   });
   const mesh = new THREE.Mesh(g, m);
-  mesh.name = 'perk-chest';
+  mesh.name = `pickup-${kind}`;
+  mesh.userData.kind = kind;
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   return mesh;
@@ -173,11 +241,35 @@ export class PerkSystem {
     this.chests = [];
     this._t = 0;
     this._v = new THREE.Vector3();
+    /** Levels earned but not yet spent — the card is modal, kills are not. */
+    this._queue = 0;
+    this._cardUp = false;
 
     // A chest per wave, dropped where the wave died rather than on a schedule:
     // the reward should be where the fight was.
     this._offWave = ctx.events.on('wave:cleared', (e) => this.spawnChest(e?.position));
     this._offDeath = ctx.events.on('player:respawn', () => this.reset());
+
+    /**
+     * KILLS ARE THE PROGRESSION.
+     *
+     * Before this, the only source of upgrades was one chest per wave clear, so
+     * a run's shape changed about once a minute and killing things fed nothing.
+     * That is the difference between a horde mode and a survivors mode: here the
+     * fight itself is what levels you, and the drops mean a body is worth
+     * walking to.
+     *
+     * Guarded on `alive === false` because `actor:death` is also how a corpse
+     * announces itself to the ragdoll path; only real kills should score.
+     */
+    this._offKill = ctx.events.on('actor:death', (e) => {
+      const actor = e?.actor;
+      if (!actor || actor.__scored) return;
+      actor.__scored = true;
+      this._queue += this.perks.addXp(1);
+      this._offerNext();
+      this.rollDrop(e?.point ?? actor.position);
+    });
 
     /**
      * Explosive rounds. Hooked here rather than in the weapon so that the perk
@@ -200,12 +292,28 @@ export class PerkSystem {
 
   reset() {
     this.perks.reset();
+    this._queue = 0;
+    this._cardUp = false;
     for (const c of this.chests) c.parent?.remove(c);
     this.chests.length = 0;
   }
 
-  /** @param {THREE.Vector3} [near] where the wave died; falls back to a spawn point. */
-  spawnChest(near) {
+  /** One roll against the drop table, at the body. */
+  rollDrop(at) {
+    if (!at) return;
+    const r = this.ctx.rng?.float?.() ?? Math.random();
+    let acc = 0;
+    for (const [kind, spec] of Object.entries(PICKUPS)) {
+      acc += spec.chance;
+      if (r < acc) return this.spawnChest(at, kind);
+    }
+  }
+
+  /**
+   * @param {THREE.Vector3} [near] where it died; falls back to a spawn point.
+   * @param {string} [kind] one of PICKUPS; defaults to the wave-clear chest.
+   */
+  spawnChest(near, kind = 'chest') {
     const ctx = this.ctx;
     let p = near;
     if (!p) {
@@ -213,11 +321,23 @@ export class PerkSystem {
       p = spawns.length ? spawns[(Math.random() * spawns.length) | 0].position : null;
     }
     if (!p) return;
-    const mesh = makeChest();
+    const mesh = makePickup(kind);
     mesh.position.set(p.x, p.y + CHEST_Y, p.z);
     mesh.userData.baseY = mesh.position.y;
     ctx.scene.add(mesh);
     this.chests.push(mesh);
+  }
+
+  /**
+   * Apply a pickup. Returns false when it should be left on the ground —
+   * walking over a full ammo box must not silently consume it.
+   */
+  collect(kind) {
+    if (kind === 'ammo') return (this.ctx.peek('weapons')?.resupply?.(60) ?? 0) > 0;
+    if (kind === 'armor') return this.perks.addArmor(45) > 0;
+    this._queue++;
+    this._offerNext();
+    return true;
   }
 
   update(dt) {
@@ -235,33 +355,59 @@ export class PerkSystem {
       if (!pos) continue;
       this._v.set(c.position.x - pos.x, 0, c.position.z - pos.z);
       if (this._v.lengthSq() > reach * reach) continue;
+      if (!this.collect(c.userData.kind ?? 'chest')) continue;
       c.parent?.remove(c);
       this.chests.splice(i, 1);
-      this.offer();
     }
   }
 
-  /** Put three cards up and freeze the fight until one is taken. */
-  offer() {
+  /**
+   * Show the next pending upgrade, if any and if the card is free.
+   *
+   * The card is modal but kills are not: a grenade that levels you twice, or a
+   * chest grabbed while a level-up is already on screen, would otherwise have
+   * the second offer overwrite the first and quietly lose an upgrade. Draining
+   * a queue one card at a time is the whole fix.
+   */
+  _offerNext() {
+    if (this._cardUp || this._queue <= 0) return;
     const ui = this.ctx.peek('ui');
     const ids = this.perks.roll(this.ctx.rng);
-    if (!ids.length) return;
+    if (!ids.length) {
+      this._queue = 0; // everything is maxed; stop pretending there is a choice
+      return;
+    }
+    this._queue--;
     if (!ui?.perkCard) {
       // No UI (capture harness, headless probe): take the first rather than
       // dropping the reward on the floor.
       this.perks.take(ids[0]);
+      this._offerNext();
       return;
     }
+    this._cardUp = true;
     ui.perkCard.show(
       ids.map((id) => ({ id, label: PERKS[id].label, desc: PERKS[id].desc(this.perks.level[id] + 1) })),
-      (id) => this.perks.take(id)
+      (id) => {
+        this.perks.take(id);
+        this._cardUp = false;
+        this._offerNext();
+      },
+      `LEVEL ${this.perks.plevel}`
     );
+  }
+
+  /** Kept for callers that just want "give me an upgrade now". */
+  offer() {
+    this._queue++;
+    this._offerNext();
   }
 
   dispose() {
     this._offWave?.();
     this._offDeath?.();
     this._offImpact?.();
+    this._offKill?.();
     for (const c of this.chests) c.parent?.remove(c);
     this.chests.length = 0;
     if (this.ctx) this.ctx.perks = null;

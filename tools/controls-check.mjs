@@ -75,6 +75,44 @@ const r = await p.evaluate(
     })
 );
 
+/**
+ * The three guards against a hitch turning into a teleport or a spin. These are
+ * pure logic, so unlike frame timings they mean exactly the same thing headless
+ * as they do on real hardware — call the methods directly rather than trying to
+ * stage a real stall.
+ */
+const guards = await p.evaluate(() => {
+  const e = window.__ENGINE__;
+  const inp = e.ctx.input;
+  inp.enabled = true;
+  inp.frozen = false;
+
+  // 1. an absurd pointer delta must not become an absurd rotation
+  const clampedBefore = inp.lookClamped;
+  inp._rawLook.x = 500000;
+  inp._rawLook.y = 0;
+  inp.beginFrame();
+  const spikeRad = Math.abs(inp.look.x);
+  const spikeClamped = inp.lookClamped > clampedBefore;
+
+  // 2. the first move after a lock is the browser's centring jump — drop it
+  inp.pointerLocked = true;
+  inp._freshLock = true;
+  inp._rawLook.x = 0;
+  inp._onMouseMove({ movementX: 4000, movementY: 0 });
+  const lockDropped = inp._rawLook.x === 0;
+  inp._onMouseMove({ movementX: 10, movementY: 0 });
+  const lockThenAccepts = inp._rawLook.x === 10;
+  inp._rawLook.x = 0;
+
+  // 3. a five-second stall must not be simulated as five seconds
+  e.step(performance.now() + 5000);
+  const stallDt = e.time.dt;
+  const stallSteps = e.time.steps;
+
+  return { spikeRad, spikeClamped, lockDropped, lockThenAccepts, stallDt, stallSteps };
+});
+
 const checks = [
   ['weapons.debugMode is null', r.debugMode === null, r.debugMode],
   ['input not frozen', !r.inputFrozen, r.inputFrozen],
@@ -88,6 +126,14 @@ const checks = [
   // The assist must be OFF on a desktop: applied to a mouse it swings the view.
   ['aim assist off on desktop', r.assistEnabled === false, r.assistEnabled],
   ['touch mode off on desktop', r.touchMode === false, r.touchMode],
+  // 500k counts unclamped would be ~1100 radians of yaw in a single frame. The
+  // clamp is a RATE, so a 60 Hz frame allows ~1.2 rad (69 degrees) — well under
+  // the pitch limit, which a swing this size used to reach in one frame.
+  ['look spike clamped', guards.spikeClamped && guards.spikeRad <= 1.3, `${guards.spikeRad.toFixed(2)} rad`],
+  ['first move after lock dropped', guards.lockDropped, guards.lockDropped],
+  ['later moves still accepted', guards.lockThenAccepts, guards.lockThenAccepts],
+  ['5s stall clamped to <=50ms', guards.stallDt <= 0.0501, `${(guards.stallDt * 1000).toFixed(1)}ms`],
+  ['stall stays under substep cap', guards.stallSteps < 8, `${guards.stallSteps} steps`],
 ];
 
 let bad = 0;

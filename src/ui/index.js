@@ -6,6 +6,7 @@ import { Hitmarkers } from './hitmarkers.js';
 import { DamageArcs } from './damage.js';
 import { HealthFx } from './health.js';
 import { AmmoPanel } from './ammo.js';
+import { SurvivorPanel } from './survivor.js';
 import { Killfeed } from './killfeed.js';
 import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
@@ -91,6 +92,7 @@ export class UiSystem {
     this.matchBar = new MatchBar(this.chromeLayer);
     this.killfeed = new Killfeed(this.chromeLayer);
     this.ammo = new AmmoPanel(this.chromeLayer);
+    this.surv = new SurvivorPanel(this.chromeLayer);
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
     /**
@@ -297,6 +299,20 @@ export class UiSystem {
     return this._pos.copy(this.ctx.camera.position);
   }
 
+  /**
+   * Forget that the pointer was ever locked.
+   *
+   * A modal that closes has to call this. Releasing and re-taking the pointer is
+   * asynchronous: close() clears `lockSuppressed` and asks for the lock back,
+   * but the lock does not arrive for a frame or two, and in that gap the check
+   * in update() sees "we had lock, we lost it, nothing is suppressing" and reads
+   * it as an Escape — so DISMISSING the perk card was what raised the pause
+   * menu, not showing it. Clearing the latch closes that window.
+   */
+  ignoreLockLoss() {
+    this._hadPointerLock = false;
+  }
+
   /** Fire-and-forget audio; the audio subsystem may not exist yet. */
   sfx(id, gain = 1) {
     const a = this.ctx.peek('audio');
@@ -442,9 +458,23 @@ export class UiSystem {
         else this.menu.toggle();
       }
       if (ctx.input.actionPressed('loadout') && !this.menu.open) this.gunsmith.toggle();
-      // Losing pointer lock mid-match is the same intent as pressing Escape.
+      /**
+       * Losing pointer lock mid-match is the same intent as pressing Escape —
+       * UNLESS a modal released it on purpose.
+       *
+       * `lockSuppressed` is exactly that signal: every modal that wants the
+       * cursor sets it before calling exitPointerLock(). Without this check the
+       * level-up perk card, which must release the pointer so its cards can be
+       * clicked, was read as an Escape and pulled the pause menu up underneath
+       * itself — a reward screen that opened the pause menu to hand you a perk.
+       */
       if (ctx.input.pointerLocked) this._hadPointerLock = true;
-      else if (this._hadPointerLock && !this.menu.open && !this.gunsmith.open) {
+      else if (
+        this._hadPointerLock &&
+        !ctx.input.lockSuppressed &&
+        !this.menu.open &&
+        !this.gunsmith.open
+      ) {
         this._hadPointerLock = false;
         this.menu.show();
       }
@@ -544,6 +574,7 @@ export class UiSystem {
     this.arcs.update(dt, rx, rz, fx, fz);
     this.health.update(dt, s);
     this.ammo.update(dt, s);
+    this.surv.update(dt, ctx.perks);
     this.killfeed.update(dt);
     // The active mode owns the score line. Merged here rather than pushed from
     // the mode so a mode that is absent (tdm/sandbox) simply leaves the HUD's
@@ -659,6 +690,7 @@ export class UiSystem {
     this.arcs.dispose();
     this.health.dispose();
     this.ammo.dispose();
+    this.surv.dispose();
     this.killfeed.dispose();
     this.compass.dispose();
     this.matchBar.dispose();

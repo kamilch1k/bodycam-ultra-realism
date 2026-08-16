@@ -675,6 +675,33 @@ export class AiSystem {
     });
   }
 
+  /**
+   * A rusher connects in melee.
+   *
+   * Routed through `damage:dealt` exactly like a bullet, and for the same
+   * reason: PlayerSystem listens for that event and applies the damage itself,
+   * so calling applyDamage() here as well would wound the player twice.
+   * Re-checks the range at the moment of the swing rather than trusting the
+   * agent's decision a frame ago, or a player who sprints clear still gets hit.
+   */
+  onAgentMelee(agent, amount) {
+    const p = this.playerPosition(this._v);
+    if (!p) return;
+    const reach = (agent.meleeRange ?? 2.1) + 0.35;
+    if (agent.position.distanceTo(p) > reach) return;
+    const player = this.ctx.peek('player');
+    this._v2.copy(agent.position);
+    this.ctx.events.emit('damage:dealt', {
+      target: player ?? 'player',
+      amount,
+      headshot: false,
+      killed: false,
+      point: p,
+      from: this._v2,
+      source: agent,
+    });
+  }
+
   emitReload(agent) {
     this.ctx.events.emit('weapon:reload', { weapon: 'ai_rifle', phase: 'start', actor: agent });
   }

@@ -204,13 +204,29 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
   /** Stages that actually executed, so only their resets run. */
   const ranStages = [];
 
-  const LITE = ['muzzle', 'lowhealth'];
-  const chosenStages =
-    transients === 'lite'
-      ? transientStages.filter((x) => LITE.includes(x.id))
-      : transients
-        ? transientStages
-        : [];
+  /**
+   * `lite` warmed only what a program-count probe caught compiling. That was too
+   * narrow: three creates the program object during compile(), but ANGLE defers
+   * the actual D3D translation to the first real DRAW, and a program that
+   * already exists does not move `info.programs.length`. So the counter reads
+   * zero while the first trigger pull still pays for the translation — which is
+   * exactly the reported "stutters when first starting shooting".
+   *
+   * `play` therefore warms everything that a player triggers in the first
+   * seconds of a fight — the FX bursts, the fire/ADS poses, the combat HUD — and
+   * skips only `ai`, whose staged firefight builds characters and dominates the
+   * cost. Numbers, per tools/warm-cost.mjs, are in the table there.
+   */
+  const SETS = {
+    lite: ['muzzle', 'lowhealth'],
+    play: ['wall', 'explosion', 'muzzle', 'combat', 'fire', 'ads', 'ui', 'lowhealth'],
+    full: transientStages.map((x) => x.id),
+  };
+  const chosenStages = Array.isArray(SETS[transients])
+    ? transientStages.filter((x) => SETS[transients].includes(x.id))
+    : transients
+      ? transientStages
+      : [];
 
   // A RENDER TARGET MUST BE BOUND WHILE COMPILING. three folds `outputColorSpace`
   // and `toneMapping` into the program cache key and reads BOTH off the currently

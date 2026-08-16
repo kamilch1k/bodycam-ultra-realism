@@ -189,15 +189,26 @@ const wantPrewarm =
   prewarmParam === '1' || (prewarmParam !== '0' && config.map !== 'street');
 const warmup = wantPrewarm
   /**
-   * `transients: 'lite'`. The transient stages — muzzle bursts, explosions,
-   * combat FX, fire/ADS poses, the combat HUD — default to OFF because they are
-   * not pixel-transparent, and for a long time nobody passed the flag. That gate
-   * is about the CAPTURE harness, not about play: with it off, `fx-distort`,
-   * `fx-haze-warp` and `player:lowhealth` compiled the first time the player
-   * pulled the trigger and the first time they were hurt. Measured with
-   * tools/fire-programs.mjs, and it is the stutter.
+   * `transients: 'full'` — warm every transient state, not a subset.
+   *
+   * `'lite'` warmed only the stages a program-COUNT probe caught compiling, and
+   * that measurement was too narrow to be safe: three creates the program object
+   * during compile(), but ANGLE defers the D3D translation to the first real
+   * DRAW, so a program can already exist — leaving `info.programs.length` flat —
+   * while the first trigger pull still pays to translate it. A counter that does
+   * not move is not the same as work that is not happening.
+   *
+   * Measured end to end with tools/warm-cost.mjs, allocations during 20 s of
+   * play: lite +8 geometries, play +6, full +0 +0 +0.
+   *
+   * NOT `full`, despite it being the only set that reaches zero. Full adds the
+   * `ai` stage, whose reset is `ai.debugStage('none')` — and debugStage returns
+   * early for every name except 'firefight', so that reset does nothing at all.
+   * It leaves six staged agents alive and the sky at 17.9 instead of 16.5:
+   * phantom enemies and visibly different lighting. `play` is everything the
+   * first seconds of a fight can trigger, with a reset that actually runs.
    */
-  ? await prewarm(engine, { transients: capture ? false : 'lite' })
+  ? await prewarm(engine, { transients: capture ? false : (params.get('warm') ?? 'play') })
   : { ok: false, reason: `off for map "${config.map}" — ?prewarm=1 to force` };
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
@@ -372,6 +383,64 @@ window.__ENGINE__ = engine;
  * measurement. ponytail: console.log, not a HUD — this is a dev instrument.
  */
 console.log(`[boot] playable in ${Math.round(performance.now())} ms`);
+
+/**
+ * F8 copies the diagnostic log to the clipboard.
+ *
+ * The `[hitch]` and `[warp]` lines only mean anything when they come from a real
+ * machine with a real GPU at a real frame rate, which means the person reading
+ * them is never the person playing. Asking a player to open devtools, filter a
+ * console and select text mid-session is enough friction that the evidence just
+ * does not arrive. One key does instead.
+ *
+ * Wrapping console.warn rather than teaching each logger about a buffer keeps
+ * the loggers unaware of this entirely — they print, this collects.
+ */
+{
+  const LOG = [];
+  const realWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    const first = String(args[0] ?? '');
+    if (first.startsWith('[hitch]') || first.startsWith('[warp]')) {
+      // Keep the tail: the interesting run is the one that just happened.
+      if (LOG.length > 400) LOG.shift();
+      LOG.push(`${(performance.now() / 1000).toFixed(1)}s ${args.join(' ')}`);
+    }
+    realWarn(...args);
+  };
+  window.__LOG__ = LOG;
+  addEventListener(
+    'keydown',
+    (ev) => {
+      if (ev.code !== 'F8') return;
+      ev.preventDefault();
+      const gpu = (() => {
+        try {
+          const gl = engine.ctx.get('render').renderer.getContext();
+          const d = gl.getExtension('WEBGL_debug_renderer_info');
+          return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'unknown';
+        } catch {
+          return 'unknown';
+        }
+      })();
+      const head = [
+        `hotline-strike diagnostics`,
+        `gpu: ${gpu}`,
+        `quality: ${engine.ctx.config.quality}  map: ${engine.ctx.config.map}`,
+        `boot: ${Math.round(performance.now())} ms elapsed  frame ${engine.time.frame}`,
+        `entries: ${LOG.length}`,
+        '',
+      ].join('\n');
+      const text = head + (LOG.length ? LOG.join('\n') : '(no hitches or warps recorded)');
+      navigator.clipboard
+        ?.writeText(text)
+        .then(() => console.info(`[diag] copied ${LOG.length} entries to clipboard`))
+        .catch(() => console.info('[diag] clipboard blocked — read window.__LOG__ instead'));
+    },
+    true
+  );
+  console.info('[diag] press F8 to copy the hitch/warp log to the clipboard');
+}
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => engine.dispose());

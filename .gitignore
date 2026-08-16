@@ -7,7 +7,9 @@ perf-candidate/
 perf-cand2/
 
 # Capture output — 780 MB of PNGs. Regenerate with tools/baseline.mjs.
-shots/
+# Glob, not just `shots/`: comparison passes write shots2/, shots3/ and so on,
+# and those are scratch too.
+shots*/
 
 # Agent scratch
 demo/

@@ -19,6 +19,8 @@
 
 /** Seconds between rounds/waves — long enough to reload and pick a corner. */
 const BREAK = 4;
+/** Seconds the corpse stays put after death, so the player sees it happen. */
+const DEATH_HOLD = 2.2;
 
 class BaseMode {
   constructor(ctx) {
@@ -187,21 +189,69 @@ class HordeMode extends BaseMode {
     super(ctx);
     this.wave = 1;
     this.best = 0;
+    /** Wall-clock of the death currently being held, 0 when alive. */
+    this._deathAt = 0;
+  }
+
+  /**
+   * What this wave is made of.
+   *
+   * A horde of one body type is one problem repeated, and the answer to it
+   * never changes — so the wave number has to change the QUESTION, not just the
+   * count. Runts arrive from wave 2 and punish standing still; brutes from
+   * wave 4 and cannot be traded with, only avoided. Ghouls stay in the mix the
+   * whole way so there is always something that dies to a normal amount of
+   * shooting.
+   *
+   * Entries repeat to weight the roll — populate() picks uniformly from this
+   * list, so listing 'ghoul' twice makes it twice as likely.
+   */
+  roster() {
+    const v = ['ghoul', 'ghoul'];
+    if (this.wave >= 2) v.push('runt');
+    if (this.wave >= 3) v.push('flatty');
+    if (this.wave >= 5) v.push('runt');
+    if (this.wave >= 4) v.push('brute');
+    return v;
   }
 
   begin() {
     this.clearDead();
     const per = Math.min(8, 1 + Math.ceil(this.wave / 2));
-    this.ai?.populate?.({ squads: 3, perSquad: per, variants: ['ghoul'] });
+    this.ai?.populate?.({ squads: 3, perSquad: per, variants: this.roster() });
     this.announce(`WAVE ${this.wave}`, `${per * 3} INCOMING`);
   }
 
   live() {
     const player = this.ctx.peek?.('player');
     if (player?.dead) {
-      this.best = Math.max(this.best, this.wave - 1);
-      this.announce('OVERRUN', `WAVE ${this.wave} · BEST ${this.best}`);
-      this.clearAll();
+      /**
+       * DEATH NEEDS A BEAT BEFORE THE RESPAWN.
+       *
+       * This used to kill and respawn on the same frame: health hit zero and the
+       * player was already standing on the spawn point with a full bar and the
+       * wave reset. Reported — accurately — as "I was running and suddenly
+       * teleported for no reason", because from the player's side that is
+       * exactly what it looks like. The OVERRUN banner was already being posted,
+       * but nothing held long enough to connect the banner to the cause, and the
+       * body moved 35 metres in one frame.
+       *
+       * Holding here leaves the corpse where it fell, in view, for long enough
+       * to read the banner. Control is released so the death cannot be walked
+       * out of, and the actual respawn happens after DEATH_HOLD.
+       */
+      if (this._deathAt === 0) {
+        this._deathAt = this.ctx.time.elapsed;
+        this.best = Math.max(this.best, this.wave - 1);
+        this.announce('OVERRUN', `WAVE ${this.wave} · BEST ${this.best}`);
+        this.clearAll();
+        player.setControlEnabled?.(false);
+        return;
+      }
+      if (this.ctx.time.elapsed - this._deathAt < DEATH_HOLD) return;
+
+      this._deathAt = 0;
+      player.setControlEnabled?.(true);
       player.respawn?.();
       // A run is over: perks reset with it, or wave 1 starts fully kitted.
       this.ctx.events.emit('player:respawn', {});

@@ -47,6 +47,10 @@ export class Input {
     this._pendingWheel = 0;
 
     this.pointerLocked = false;
+    /** True for exactly one move event after a lock — see _onMouseMove. */
+    this._freshLock = false;
+    /** How often the per-frame look clamp has fired. Read by controls-check. */
+    this.lookClamped = 0;
     /**
      * Set while a menu owns the cursor. The click that re-acquires pointer lock
      * is a CONVENIENCE for getting back into the game, and it has to be off
@@ -162,6 +166,18 @@ export class Input {
 
   _onMouseMove(e) {
     if (!this.enabled || !this.pointerLocked || this.frozen) return;
+    /**
+     * DROP the first move after a lock. Chrome reports the jump from wherever
+     * the cursor was sitting to the centre of the screen as one movementX/Y
+     * pair, so re-entering the game after Esc or a tab-switch used to whip the
+     * view by however far the mouse happened to be from centre — a "random"
+     * rotation that is really the browser telling the truth about a jump the
+     * player never made.
+     */
+    if (this._freshLock) {
+      this._freshLock = false;
+      return;
+    }
     // movementX/Y is already relative and unaffected by cursor clamping.
     this._rawLook.x += e.movementX ?? 0;
     this._rawLook.y += e.movementY ?? 0;
@@ -173,7 +189,9 @@ export class Input {
   }
 
   _onLockChange() {
+    const was = this.pointerLocked;
     this.pointerLocked = document.pointerLockElement === this.canvas;
+    if (this.pointerLocked && !was) this._freshLock = true;
     if (!this.pointerLocked) this._onBlur();
   }
 
@@ -184,7 +202,8 @@ export class Input {
     this._rawLook.y = 0;
   }
 
-  beginFrame() {
+  /** `dt` sizes the look clamp; defaults to a 60 Hz frame when called by hand. */
+  beginFrame(dt = 1 / 60) {
     this._pressed.clear();
     this._released.clear();
 
@@ -199,6 +218,32 @@ export class Input {
     }
     this._pendingDown.clear();
     this._pendingUp.clear();
+
+    /**
+     * Cap one frame's worth of pointer delta, as an angular RATE.
+     *
+     * The first version of this was a flat 2000 counts, chosen to be generous.
+     * At the default sensitivity that is 4.4 radians — 252 degrees in a single
+     * frame, comfortably enough to slam pitch into its limit and leave the
+     * player staring at the sky, which is the reported symptom. A cap that
+     * permits the bug is not a cap.
+     *
+     * A rate scales with the frame instead: a long frame legitimately pools more
+     * mouse movement than a short one, so the budget grows with it, while any
+     * single frame stays bounded. 72 rad/s allows roughly 69 degrees at 60 fps —
+     * a genuine fast flick still passes, spread over the two or three frames a
+     * real flick actually takes — and the 2.5 rad ceiling stops a long hitch from
+     * handing back a full spin at once.
+     */
+    const maxRad = Math.min(2.5, 72 * Math.max(dt, 1 / 120));
+    const MAX_COUNTS = maxRad / (this.config.sensitivity || 0.0022);
+    const mag = Math.hypot(this._rawLook.x, this._rawLook.y);
+    if (mag > MAX_COUNTS) {
+      const k = MAX_COUNTS / mag;
+      this._rawLook.x *= k;
+      this._rawLook.y *= k;
+      this.lookClamped++;
+    }
 
     const s = this.config.sensitivity;
     this.look.x = this.frozen ? 0 : this._rawLook.x * s;

@@ -253,6 +253,19 @@ export class WeaponSystem {
     return [...this.states.keys()];
   }
 
+  /**
+   * Top up the current weapon's reserve, capped at what it can carry.
+   * Returns the rounds actually taken, so a pickup can refuse to be consumed
+   * when the player is already full instead of vanishing for nothing.
+   */
+  resupply(rounds) {
+    const s = this.state;
+    if (!s) return 0;
+    const add = Math.min(rounds, Math.max(0, s.def.reserve - s.reserve));
+    s.reserve += add;
+    return add;
+  }
+
   get ammo() {
     const s = this.state;
     if (!s) return { mag: 0, chambered: false, reserve: 0, magSize: 0, total: 0, empty: true };

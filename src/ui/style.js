@@ -240,6 +240,39 @@ const CSS = `
    sideways into another. Rows are explicit grids with an 8px gutter; the
    equipment counts get their own row above the weapon name rather than sharing
    the head row, which is what used to collide. */
+/* Survivor readout — bottom left, mirroring the ammo panel opposite it. */
+.ow-surv {
+  position:absolute; left:var(--pad); bottom:var(--pad);
+  width: calc(168px * var(--k));
+  line-height:1;
+}
+.ow-surv-head {
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom: calc(5px * var(--k));
+}
+.ow-surv-lvl {
+  font-size: calc(15px * var(--k)); letter-spacing:.16em;
+  color:rgba(255,255,255,.95); text-shadow:0 1px 3px rgba(0,0,0,.7);
+}
+.ow-surv-kills {
+  font-size: calc(9.5px * var(--k)); letter-spacing:.12em;
+  color:rgba(255,255,255,.5); text-shadow:0 1px 3px rgba(0,0,0,.7);
+}
+.ow-surv-track {
+  height: calc(4px * var(--k));
+  background:rgba(0,0,0,.45);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+  margin-bottom: calc(4px * var(--k));
+  overflow:hidden;
+  transition:opacity .25s ease;
+}
+.ow-surv-fill {
+  height:100%; width:0%;
+  background:rgba(255,255,255,.9);
+}
+/* Armour is the one coloured thing here, so a plate is unmistakable. */
+.ow-surv-armor .ow-surv-fill { background:#5ad1ff; }
+
 .ow-ammo {
   position:absolute; right:var(--pad); bottom:var(--pad);
   --ammo-w: calc(168px * var(--k));

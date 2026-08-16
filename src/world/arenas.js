@@ -251,9 +251,280 @@ const HOLDOUT_SPAWNS = [
   [0, 29, Math.PI, 'north gate'],
 ];
 
+/**
+ * A stepped ramp, because a box only rotates about Y — there is no pitch, so a
+ * slope has to be built out of treads. 0.35 m rises are climbed by the character
+ * controller without a mantle, which is what makes an elevation change a ROUTE
+ * rather than a wall.
+ *
+ * `dir` is the axis the ramp climbs along: 'x' or 'z'. `sign` is +1 or -1 for
+ * the direction of ascent, so the top tread is the one nearest the platform.
+ */
+function ramp(x, z, width, dir, steps, mat, sign = 1, rise = 0.35, tread = 1.6) {
+  const out = [];
+  for (let i = 0; i < steps; i++) {
+    const h = rise * (i + 1);
+    const off = (i + 0.5) * tread * sign;
+    if (dir === 'x') out.push([x + off, z, tread, width, h, 0, mat, 0]);
+    else out.push([x, z + off, width, tread, h, 0, mat, 0]);
+  }
+  return out;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── *
+ *  MIAMI — the rooftop.
+ *
+ *  A skyscraper roof rather than its interior, and that is a NAVIGATION
+ *  decision as much as an aesthetic one. The nav grid is a single 2-D height
+ *  field, so two floors stacked over the same footprint give an agent two
+ *  walkable surfaces at one x/z and pathing picks whichever it sampled. Real
+ *  floors would need a second grid, which is a rewrite, not a map.
+ *
+ *  So the "floors" are TERRACES: sun deck, pool deck and helipad sit at
+ *  different heights but never overlap in plan, every one reached by a stepped
+ *  ramp. The player gets verticality, sightlines and drops; the grid stays a
+ *  function of x and z; and no ghoul stands under a floor it cannot leave.
+ *
+ *  Pastel plaster, teal water and a lot of glass — the palette is doing the
+ *  Miami, since downloading textures would cost the single-file build.
+ * ────────────────────────────────────────────────────────────────────────── */
+const MIAMI = [
+  // Roof edge. Waist high so it reads as a parapet and still blocks a fall.
+  ...wall('x', -33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
+  ...wall('x', 33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
+  ...wall('z', -33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
+  ...wall('z', 33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
+
+  // ---- penthouse, north. Two doors, so it is a route and not a trap.
+  ...wall('x', 13, -13, 13, 3.4, [-7, 7], WALL_T, 'neon_white', 0),
+  ...wall('x', 29, -13, 13, 3.4, [], WALL_T, 'neon_white', 0),
+  ...wall('z', -13, 13, 29, 3.4, [21], WALL_T, 'neon_white', 0),
+  ...wall('z', 13, 13, 29, 3.4, [21], WALL_T, 'neon_white', 0),
+  // glass frontage either side of the south doors
+  [-10.5, 13, 3.6, 0.25, 2.6, 0, 'glass', 0.4],
+  [10.5, 13, 3.6, 0.25, 2.6, 0, 'glass', 0.4],
+  // bar counter and seating inside — chest-high cover
+  [-4, 22, 7, 0.9, 1.05, 0, 'neon_orange', 0],
+  [5, 20, 0.9, 5, 1.05, 0, 'neon_orange', 0],
+
+  // ---- pool deck, west. A sunken basin is not possible on a flat floor plane,
+  // so the water is a rim you vault and a teal pad you stand in.
+  ...wall('x', -12, -30, -14, 0.7, [], 0.5, 'neon_pink', 0),
+  ...wall('x', -28, -30, -14, 0.7, [], 0.5, 'neon_pink', 0),
+  ...wall('z', -30, -28, -12, 0.7, [], 0.5, 'neon_pink', 0),
+  ...wall('z', -14, -28, -12, 0.7, [], 0.5, 'neon_pink', 0),
+  [-22, -20, 15.4, 7.4, 0.08, 0, 'neon_teal', 0],
+  // loungers
+  [-18, -10, 2.2, 0.8, 0.5, 0, 'neon_pink', 0],
+  [-24, -10, 2.2, 0.8, 0.5, 0, 'neon_pink', 0],
+
+  // ---- helipad, south-east. Raised terrace, ramped from two sides.
+  [16, -18, 18, 18, 1.05, 0, 'neon_white', 0],
+  [16, -18, 11, 11, 0.06, 0, 'neon_white', 1.05],
+  ...ramp(16, -8, 6, 'z', 3, 'neon_purple', -1),
+  ...ramp(6, -18, 6, 'x', 3, 'neon_purple', 1),
+
+  // ---- plant and cover on the open deck
+  [-6, 2, 3.2, 2.2, 2.1, 0, 'neon_purple', 0], // stair housing
+  [6, 4, 2.4, 2.4, 1.6, 0, 'neon_cyan', 0], // AC unit
+  [10, 0, 2.4, 2.4, 1.6, 0, 'neon_cyan', 0],
+  [-16, 6, 2.6, 2.6, 2.6, 0, 'steel', 0], // water tank
+  [20, 10, 1.1, 1.1, 1.1, 0.6, 'neon_pink', 0],
+  [24, 4, 1.1, 1.1, 1.1, -0.4, 'neon_cyan', 0],
+  [-24, 14, 1.1, 1.1, 1.1, 0.3, 'neon_cyan', 0],
+  [2, -26, 4.4, 1.1, 1.1, 0, 'neon_white', 0],
+  [-8, -24, 1.1, 4.4, 1.1, 0, 'neon_white', 0],
+  [-20, -30, 3.2, 1.1, 1.1, 0, 'neon_orange', 0],
+
+  /**
+   * NEON. Thin emissive strips laid along the parapet, the pool rim and the
+   * penthouse frontage.
+   *
+   * This is what the map was missing far more than it was missing geometry: at
+   * a low sun everything reads as one warm mass, and a few self-lit lines give
+   * the eye edges to follow and the level an identity. They are 0.12 m tall so
+   * they are decoration rather than cover, and cost four boxes each.
+   */
+  [0, -32.6, 60, 0.3, 0.14, 0, 'window_glow', 1.15],
+  [0, 32.6, 60, 0.3, 0.14, 0, 'window_glow', 1.15],
+  [-32.6, 0, 0.3, 60, 0.14, 0, 'emissive_warm', 1.15],
+  [32.6, 0, 0.3, 60, 0.14, 0, 'emissive_warm', 1.15],
+  // pool rim glow — reads as underwater lighting from above
+  [-22, -13.7, 15.6, 0.28, 0.12, 0, 'window_glow', 0.7],
+  [-22, -30.3, 15.6, 0.28, 0.12, 0, 'window_glow', 0.7],
+  // penthouse sign band above the glass
+  [0, 12.7, 24, 0.25, 0.5, 0, 'emissive_warm', 2.9],
+  // helipad perimeter lights
+  [16, -26.6, 16, 0.3, 0.12, 0, 'lamp_lens', 1.05],
+  [16, -9.4, 16, 0.3, 0.12, 0, 'lamp_lens', 1.05],
+];
+
+/** Player on the open deck at ground level — a spawn must be walkable ground. */
+const MIAMI_SPAWNS = [
+  [0, -4, 0, 'sun deck'],
+  [-26, 24, -2.2, 'pool stair'],
+  [26, 26, 2.4, 'penthouse east'],
+  [28, -30, 1.2, 'helipad ramp'],
+  [-28, -4, -1.6, 'west edge'],
+  [0, 30, Math.PI, 'penthouse'],
+];
+
+/* ────────────────────────────────────────────────────────────────────────── *
+ *  ZONE — the Soviet works.
+ *
+ *  Cracked concrete, panel blocks and rusted steel: a decommissioned plant with
+ *  a yard around it. Same terrace rule as MIAMI — the loading dock and the
+ *  substation roof are raised and ramped, never stacked over anything.
+ *
+ *  Shape is a broken ring: three buildings around a central yard with gaps
+ *  between them, so a horde arrives from several bearings at once and the
+ *  player can always break line of sight by rounding a corner rather than by
+ *  finding the one correct door.
+ * ────────────────────────────────────────────────────────────────────────── */
+const ZONE = [
+  // perimeter fence — corrugated, with two gaps that read as ways out
+  ...wall('x', -35, -35, 35, 2.4, [-12, 14], 0.3, 'corrugated', 0),
+  ...wall('x', 35, -35, 35, 2.4, [0], 0.3, 'corrugated', 0),
+  ...wall('z', -35, -35, 35, 2.4, [10], 0.3, 'corrugated', 0),
+  ...wall('z', 35, -35, 35, 2.4, [-10], 0.3, 'corrugated', 0),
+
+  // ---- panel block, north-west. Gutted: two doors and no roof to hide under.
+  ...wall('x', 12, -30, -8, 3.6, [-24, -14], WALL_T, 'concrete_dark', 0),
+  ...wall('x', 26, -30, -8, 3.6, [-20], WALL_T, 'concrete_dark', 0),
+  ...wall('z', -30, 12, 26, 3.6, [19], WALL_T, 'concrete_dark', 0),
+  ...wall('z', -8, 12, 26, 3.6, [19], WALL_T, 'concrete_dark', 0),
+  // internal spine, so the inside is two rooms rather than one hall
+  ...wall('z', -19, 14, 24, 2.6, [17, 22], WALL_T, 'concrete', 0),
+
+  // ---- workshop, east. Open front onto the yard.
+  ...wall('z', 16, -22, 4, 3.2, [-16, -4], WALL_T, 'brick', 0),
+  ...wall('z', 30, -22, 4, 3.2, [], WALL_T, 'brick', 0),
+  ...wall('x', -22, 16, 30, 3.2, [23], WALL_T, 'brick', 0),
+  ...wall('x', 4, 16, 30, 3.2, [23], WALL_T, 'brick', 0),
+  // loading dock: raised platform with a ramp down into the yard
+  [23, -12, 12, 5, 1.05, 0, 'concrete', 0],
+  ...ramp(23, -7.5, 5, 'z', 3, 'concrete_dark', 1),
+
+  // ---- substation, south-west. Low roof you can actually get onto.
+  [-20, -20, 12, 12, 2.1, 0, 'brick_fine', 0],
+  ...ramp(-11.5, -20, 5, 'x', 6, 'concrete_dark', 1, 0.35, 1.5),
+
+  // ---- yard clutter: cover at chest height, vaultable at 0.7
+  [0, 0, 3.2, 3.2, 2.8, 0.4, 'metal_rust', 0], // reactor stack
+  [-4, 8, 2.2, 2.2, 1.1, 0, 'metal_rust_prop', 0],
+  [6, -6, 4.4, 1.1, 1.1, 0, 'concrete_prop', 0],
+  [12, 6, 1.1, 4.4, 1.1, 0, 'concrete_prop', 0],
+  [-8, -6, 2.6, 1.1, 0.7, 0, 'wood_dark', 0],
+  [8, 14, 2.6, 1.1, 0.7, 0, 'wood_dark', 0],
+  [18, 24, 2.4, 2.4, 1.6, 0.3, 'metal_rust', 0],
+  [-28, 4, 2.4, 2.4, 1.6, -0.5, 'metal_rust', 0],
+  [30, 14, 1.1, 6, 1.1, 0, 'concrete_prop', 0],
+  [-14, 30, 6, 1.1, 1.1, 0, 'concrete_prop', 0],
+  [26, -30, 3.2, 3.2, 2.2, 0.2, 'metal_dark', 0],
+
+  // ---- colour, so the yard is not one grey mass. Soviet industrial paint is
+  // actually loud: ochre panels, teal doors, red-lead primer on the steelwork.
+  [-19, 12.2, 12, 0.3, 2.4, 0, 'metal_green', 0], // panel block door band
+  [23, 15.8, 12, 0.3, 2.2, 0, 'fabric_teal', 0], // workshop shutter
+  [-20, -13.8, 12, 0.3, 2.1, 0, 'metal_rust', 0], // substation face
+  [0, 0, 3.6, 3.6, 0.35, 0.4, 'metal_rust_prop', 2.8], // stack cap
+  // sodium lamps on the yard poles — the one warm note in a cold map
+  [-14, -2, 0.35, 0.35, 5.2, 0, 'metal_dark', 0],
+  [-14, -2, 0.9, 0.9, 0.3, 0, 'lamp_lens', 5.2],
+  [14, 10, 0.35, 0.35, 5.2, 0, 'metal_dark', 0],
+  [14, 10, 0.9, 0.9, 0.3, 0, 'lamp_lens', 5.2],
+  [2, 26, 0.35, 0.35, 5.2, 0, 'metal_dark', 0],
+  [2, 26, 0.9, 0.9, 0.3, 0, 'lamp_lens', 5.2],
+  // hazard striping at the dock edge
+  [23, -14.6, 12, 0.3, 0.14, 0, 'emissive_warm', 1.05],
+];
+
+/** Yard centre-south: open, flat, and away from the buildings' footprints. */
+const ZONE_SPAWNS = [
+  [0, -26, 0, 'yard'],
+  [-30, 30, -2.4, 'panel block'],
+  [30, 30, 2.4, 'workshop'],
+  [-30, -32, -0.6, 'substation'],
+  [32, 0, 1.6, 'east gate'],
+  [0, 32, Math.PI, 'north gap'],
+];
+
 export const ARENAS = {
   strike: { walls: STRIKE, spawns: STRIKE_SPAWNS, floor: [68, 48], ground: 'road_dust' },
   holdout: { walls: HOLDOUT, spawns: HOLDOUT_SPAWNS, floor: [68, 68], ground: 'sand' },
+  /**
+   * 13.0, measured rather than picked. tools/hour-sweep.mjs prints the sun's
+   * blue/red ratio against the hour: it peaks at 0.755 around noon and falls
+   * away hard on both sides (0.70 at 15.4, 0.46 at 18). Since white plaster
+   * renders as albedo x sun colour, every hour after ~14 turns this deck beige
+   * no matter what the palette says — the "concrete" in the screenshots was
+   * literally the light, measured at rgb(160,143,122) with a sun tint of
+   * (1, 0.87, 0.70). 13.0 keeps the sun near its most neutral while the
+   * altitude (65 degrees) still throws readable shadows.
+   */
+  miami: {
+    walls: MIAMI,
+    spawns: MIAMI_SPAWNS,
+    floor: [70, 70],
+    ground: 'neon_white',
+    sky: 13.0,
+    /** Negative EV = brighter. See the note in world/index.js. */
+    exposure: -1.2,
+    /**
+     * `cloudCoverage`, NOT `coverage`. setWeather is an Object.assign onto the
+     * live weather object, so a wrong key is silently accepted and the sky
+     * simply never changes — which is exactly what a previous pass did here,
+     * writing two dead properties and leaving the default overcast in place.
+     * The names are in SkySystem's `this.weather`, not in its doc comment.
+     */
+    /**
+     * The "grey goo sky" was the HORIZON, not the dome. Pointed up, this sky
+     * already measured a saturated blue (sat 0.7); pointed at the skyline —
+     * which is where a first-person camera actually looks — it measured
+     * rgb(130,123,114), a flat grey-tan band. That band is aerosol: turbidity
+     * scatters the blue out, `horizonMurk` deliberately fades the dome to grey
+     * at eye level, and the fog sits on top of both. All three are dialled to
+     * near-nothing here, so the blue runs all the way down to the parapet.
+     */
+    weather: {
+      cloudCoverage: 0.0,
+      cirrusCoverage: 0.08,
+      turbidity: 1.1,
+      horizonMurk: 0.015,
+      /**
+       * ZERO, and this is the single line that fixed "the skybox is grey goo".
+       *
+       * Fog integrates along the view ray, and the sky is at effectively
+       * infinite distance, so it accumulates to full opacity and REPLACES the
+       * dome rather than tinting it. Measured on this exact view: at a density
+       * of 0.03 — which reads like "barely any" — the horizon sampled
+       * rgb(147,143,140), flat grey; at 0 the same pixel is rgb(8,112,144),
+       * the ocean. Nothing else about the sky had to change. Every previous
+       * attempt was tuning the dome underneath an opaque grey sheet.
+       */
+      fogDensity: 0,
+      // A rooftop has no walls to the skyline, so everything past the parapet
+      // is the sky's lower hemisphere and this colour is literally the whole
+      // backdrop. Miami is looking at the Atlantic.
+      groundAlbedo: 0x1d7f96,
+    },
+  },
+  // The Zone keeps its overcast — there it is the point rather than an accident.
+  zone: {
+    walls: ZONE,
+    spawns: ZONE_SPAWNS,
+    floor: [74, 74],
+    ground: 'asphalt',
+    sky: 16.2,
+    weather: {
+      cloudCoverage: 0.62,
+      cirrusCoverage: 0.4,
+      turbidity: 3.2,
+      fogDensity: 0.6,
+      // Wet pine and dead grass to the treeline, not desert sand.
+      groundAlbedo: 0x3c4433,
+    },
+  },
 };
 
 /**
