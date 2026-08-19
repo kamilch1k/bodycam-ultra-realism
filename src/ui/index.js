@@ -273,6 +273,51 @@ export class UiSystem {
     this._prevPos.copy(this._playerPos());
   }
 
+  /**
+   * Finish the one-time minimap bake behind the front menu.
+   *
+   * Miami has no vector-map source, so Minimap falls back to a 512px depth
+   * render. Leaving that on its normal frame-20 retry created three depth
+   * programs, a synchronous readback and the bitmap pass just as gameplay
+   * started. Core's pacing gate admits the whole non-preemptible bake as one
+   * job; afterwards `bakeDone` keeps the ordinary lateUpdate path inert.
+   */
+  async prewarmMaterials(ctx = this.ctx, { beforeJob, signal } = {}) {
+    const renderer = ctx?.peek?.('render')?.renderer;
+    if (!renderer || !this.minimap) return { ok: false, reason: 'minimap or renderer unavailable' };
+
+    const abort = () => {
+      if (!signal?.aborted) return;
+      const err = new Error('UI pre-warm aborted');
+      err.name = 'AbortError';
+      throw err;
+    };
+
+    const before = renderer.info.programs?.length ?? 0;
+    const t0 = performance.now();
+    abort();
+    if (beforeJob) await beforeJob({ phase: 'ui-minimap', index: 0, total: 1 });
+    abort();
+    this.minimap.tryBake(ctx);
+    abort();
+
+    // At this point every world subsystem has finished init. If the depth
+    // occupancy test still rejected the arena, retrying the identical render
+    // at frames 20/40/... can never reveal new static map geometry; it only
+    // repeats the readback hitch before eventually showing the same grid.
+    // Commit that existing fallback now and release the failed bake targets.
+    const fallback = !this.minimap.bakeDone;
+    if (fallback) this.minimap.finishFallback();
+
+    return {
+      ok: true,
+      baked: !fallback,
+      fallback,
+      ms: Math.round(performance.now() - t0),
+      programs: (renderer.info.programs?.length ?? 0) - before,
+    };
+  }
+
   /* ------------------------------------------------------------- helpers -- */
 
   _weaponState() {

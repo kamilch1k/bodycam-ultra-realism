@@ -46,7 +46,7 @@ import { NavGrid, CoverMap } from './nav.js';
 import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
-import { prewarmFaces } from './billboard.js';
+import { attachBillboard, disposeFaces, prewarmFaces } from './billboard.js';
 
 export class AiSystem {
   static id = 'ai';
@@ -74,6 +74,7 @@ export class AiSystem {
     // leaves them hovering: see grounding.js.
     this.ground = new GroundShadows(this.root, 16);
     this._variants = new Map();
+    this._variantForkDebt = null;
     this.agents = [];
     this.squads = [];
     this.grid = null;
@@ -142,7 +143,39 @@ export class AiSystem {
       );
     }
 
-    // Navigation, the garrison and every character shader, DURING BOOT.
+    // Build every shared character geometry during boot. Horde introduces runt,
+    // flatty and brute on later waves; leaving `variant()` lazy moved 20-45 ms
+    // of procedural mesh work onto each wave-spawn frame. The complete set is
+    // only ~0.2 s and each geometry is shared by every actor of that type.
+    //
+    // Building early must not perturb gameplay randomness. `variant()` used to
+    // consume one fork the first time each type appeared, so restore the stream
+    // after construction and record a one-fork debt that is paid on that same
+    // first request later. Wave layout/behaviour therefore see the old sequence.
+    const variantRng = {
+      s0: this.rng.s0,
+      s1: this.rng.s1,
+      s2: this.rng.s2,
+      s3: this.rng.s3,
+      spare: this.rng._spare,
+    };
+    const prebuilt = [];
+    for (const name of Object.keys(VARIANTS)) {
+      try {
+        this.variant(name);
+        prebuilt.push(name);
+      } catch (err) {
+        console.warn(`[ai] variant prebuild "${name}" failed:`, err?.message ?? err);
+      }
+    }
+    this.rng.s0 = variantRng.s0;
+    this.rng.s1 = variantRng.s1;
+    this.rng.s2 = variantRng.s2;
+    this.rng.s3 = variantRng.s3;
+    this.rng._spare = variantRng.spare;
+    this._variantForkDebt = new Set(prebuilt);
+
+    // Navigation and the garrison, DURING BOOT.
     //
     // MEASURED, not guessed: all of this used to land on the first `update()`
     // after the player took control — 224 ms for the 221x221 walkability grid,
@@ -158,7 +191,9 @@ export class AiSystem {
     // unchanged. `update()` keeps the same code as a fallback for the case where
     // the collision world is not registered yet.
     this._bootNav(ctx);
-    await this.prewarmMaterials();
+    // Shader translation is orchestrated by core/prewarm.js. Keeping it out of
+    // init lets the paced front-menu path become interactive before the driver
+    // has translated every character permutation.
   }
 
   /**
@@ -181,8 +216,8 @@ export class AiSystem {
   }
 
   /**
-   * Build every character material and force its shader program to compile,
-   * WITHOUT spawning a gameplay object and WITHOUT drawing a frame.
+   * Build every character material and force its shader program to translate
+   * through tiny off-screen draws, WITHOUT spawning a gameplay object.
    *
    * This is the hook `src/core/prewarm.js` documents as missing: its `transients`
    * pass reached the character programs by staging a firefight, which left actors
@@ -196,19 +231,20 @@ export class AiSystem {
    *    the global `Material.id` counter, so creating them in any other order
    *    reorders those draws and flips the depth tie on coplanar surfaces. That is
    *    a measured 2-pixel gate failure, not a theory — see MATERIAL_SLOTS.
-   *  - the programs are compiled against a throwaway scene holding ONE dummy
+   *  - the programs are compiled and drawn against a throwaway scene holding ONE dummy
    *    SkinnedMesh. The permutation three compiles is decided by the material
    *    plus the object's features (skinning, vertex colours, uv) and the target
-   *    scene's lights, so a 6-triangle stand-in with the real 25-bone skeleton
+   *    scene's lights, so a one-triangle stand-in with the real 25-bone skeleton
    *    and the real vertex attributes yields the same programs a soldier does.
    *  - the cascade depth variant is compiled too, by borrowing render's own
    *    override material: `compileAsync` only ever looks at `object.material`, so
    *    the skinned depth program is otherwise not reachable without rendering a
    *    shadow map.
    *
-   * Idempotent and never throws — a failed prewarm just means the old stutter.
+   * Idempotent. Ordinary driver failures are reported in the result; an explicit
+   * abort is rethrown so a superseded menu-map build can be disposed.
    */
-  async prewarmMaterials() {
+  async prewarmMaterials(_ctx = this.ctx, { beforeJob, signal } = {}) {
     if (this._prewarmed) return this._prewarmed;
     const t0 = performance.now();
     const out = { ok: false, materials: 0, programs: 0, ms: 0 };
@@ -237,41 +273,189 @@ export class AiSystem {
       if (!renderer) return out;
       const before = renderer.info.programs?.length ?? 0;
 
-      const scene = new THREE.Scene();
-      const { skeleton, root } = RIG.createSkeleton();
-      const geo = this._dummySkinGeometry();
-      const mesh = new THREE.SkinnedMesh(geo, mats);
-      mesh.frustumCulled = false;
-      scene.add(root);
-      scene.add(mesh);
-      mesh.bind(skeleton);
-
-      const compile = async (target) => {
-        try {
-          await renderer.compileAsync(scene, this.ctx.camera, target);
-        } catch {
-          try { renderer.compile(scene, this.ctx.camera, target); } catch { /* driver */ }
-        }
+      const abort = () => {
+        if (!signal?.aborted) return;
+        const err = new Error('AI pre-warm aborted');
+        err.name = 'AbortError';
+        throw err;
       };
-      await compile(this.ctx.scene);
-      // cascade depth: same object, render's own override material
-      const depth = r.csm?.depthMaterial;
-      if (depth) {
-        mesh.material = depth;
-        await compile(this.ctx.scene);
-      }
-      // the grenade is a plain (unskinned) mesh, so it needs its own object
-      scene.remove(mesh);
-      const g = new THREE.Mesh(this._grenadeGeo, this._grenadeMat);
-      scene.add(g);
-      await compile(this.ctx.scene);
-      scene.remove(g);
+      const admit = async (phase, detail = '') => {
+        if (beforeJob) await beforeJob({ phase, detail });
+        abort();
+      };
 
-      geo.dispose();
-      skeleton.dispose?.();
+      /**
+       * `compileAsync()` creating a WebGLProgram is not enough on ANGLE/D3D.
+       * The real profile caught GetProgramiv blocking 32-46 ms PER character
+       * program on the first visible enemy: driver translation was deferred to
+       * the first draw. Draw one tiny skinned triangle per material so each
+       * translation and each shared texture upload happens here, paced behind
+       * the menu, rather than six of them landing on one gameplay frame.
+       */
+      const scene = new THREE.Scene();
+      scene.fog = this.ctx.scene.fog;
+      scene.environment = this.ctx.scene.environment;
+
+      // Match the exact punctual-light permutation the first real frame uses.
+      // Ballast predicts the cull and `_cullLights` applies it; both are the same
+      // calls the normal world/render pipeline makes, just without advancing it.
+      this.ctx.peek('world')?._stabiliseLightCount?.(this.ctx);
+      const camera = this.ctx.camera;
+      camera.updateMatrixWorld(true);
+      // _syncSun consumes the directional-light list populated by _collect.
+      // During frame-0 prewarm that list is otherwise empty, leaving render's
+      // fallback sun visible beside sky-sun + sky-moon (3 directional lights)
+      // while gameplay hides the fallback and compiles for 2. Mirror the real
+      // render ordering so these draws finish the programs enemies actually use.
+      r._collect?.(this.ctx.scene);
+      r._syncSun?.(camera);
+      const camPos = new THREE.Vector3();
+      camera.getWorldPosition(camPos);
+      r._cullLights?.(camPos);
+      this.ctx.scene.traverse((object) => {
+        if (object.isLight && object.visible) scene.children.push(object);
+      });
+
+      const stage = new THREE.Group();
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      stage.position.copy(camPos).addScaledVector(forward, 4);
+      stage.position.y -= 1.15;
+      const { skeleton, root } = RIG.createSkeleton();
+      const dummyGeo = this._dummySkinGeometry();
+      const mesh = new THREE.SkinnedMesh(dummyGeo, mats[0]);
+      mesh.frustumCulled = false;
+      mesh.castShadow = true;
+      stage.add(root, mesh);
+      scene.add(stage);
+      mesh.bind(skeleton);
+      stage.updateMatrixWorld(true);
+
+      const prevRt = renderer.getRenderTarget();
+      const prevFace = renderer.getActiveCubeFace?.() ?? 0;
+      const prevMip = renderer.getActiveMipmapLevel?.() ?? 0;
+      const rt = new THREE.WebGLRenderTarget(1, 1, {
+        type: THREE.HalfFloatType,
+        format: THREE.RGBAFormat,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        depthBuffer: true,
+        stencilBuffer: false,
+        generateMipmaps: false,
+      });
+      let contact = null;
+
+      try {
+        renderer.setRenderTarget(rt);
+        try {
+          mesh.material = mats;
+          await renderer.compileAsync(scene, camera);
+        } catch {
+          try { renderer.compile(scene, camera); } catch { /* driver */ }
+        }
+
+        // Split the expensive ANGLE links across frames. Material parameters do
+        // not alter the program key, but custom detail/rim hooks do, so draw each
+        // unique material rather than guessing which ones share a permutation.
+        for (const material of mats) {
+          await admit('ai-forward', material.name);
+          mesh.geometry = dummyGeo;
+          mesh.material = material;
+          renderer.setRenderTarget(rt);
+          renderer.render(scene, camera);
+        }
+
+        // The MRT prepass is its own skinned program and was the first cold draw
+        // named by the trace (`enemy1` / `ow-prepass`). Run that exact pass once.
+        if (r.gbuffer?.rt) {
+          await admit('ai-prepass', 'ow-prepass');
+          const vp = new THREE.Matrix4().multiplyMatrices(
+            camera.projectionMatrix,
+            camera.matrixWorldInverse
+          );
+          mesh.geometry = dummyGeo;
+          mesh.material = mats[0];
+          r.gbuffer.render(renderer, scene, camera, vp, vp, true);
+        }
+
+        // Same object feature (skinning) through the cascade override. A tiny
+        // target is sufficient to force its link without touching live shadows.
+        const depth = r.csm?.depthMaterial;
+        if (depth) {
+          await admit('ai-shadow', depth.name || 'csm-depth');
+          mesh.geometry = dummyGeo;
+          mesh.material = depth;
+          renderer.setRenderTarget(rt);
+          renderer.render(scene, camera);
+        }
+
+        // Upload every shared variant geometry now. Their programs are already
+        // linked above, so these draws are cheap; later waves no longer create
+        // vertex/index buffers in the middle of `HordeMode.begin()`.
+        for (const [name, variant] of this._variants) {
+          await admit('ai-geometry', name);
+          mesh.geometry = variant.geometry;
+          mesh.material = variant.materials;
+          renderer.setRenderTarget(rt);
+          renderer.render(scene, camera);
+        }
+
+        // Flatty replaces the skinned body with a Sprite. Face canvases were
+        // uploaded by prewarmFaces(); this draw forces the SpriteMaterial link.
+        const flat = new THREE.Group();
+        attachBillboard(flat, { seed: 0, height: 1.95 });
+        flat.position.copy(stage.position);
+        scene.add(flat);
+        mesh.visible = false;
+        await admit('ai-billboard', 'flatty');
+        renderer.setRenderTarget(rt);
+        renderer.render(scene, camera);
+        mesh.visible = true;
+        scene.remove(flat);
+
+        // Grounding quads are hidden until an actor reaches lateUpdate, so a
+        // normal scene compile cannot see them. Draw one instance of each map.
+        contact = new THREE.InstancedMesh(this.ground._src, this.ground.bodyMat, 1);
+        contact.frustumCulled = false;
+        contact.setMatrixAt(0, new THREE.Matrix4());
+        scene.add(contact);
+        mesh.visible = false;
+        for (const material of [this.ground.bodyMat, this.ground.footMat]) {
+          await admit('ai-ground', material === this.ground.bodyMat ? 'body' : 'feet');
+          contact.material = material;
+          renderer.setRenderTarget(rt);
+          renderer.render(scene, camera);
+        }
+        scene.remove(contact);
+        contact.dispose();
+        contact = null;
+        mesh.visible = true;
+
+        // The grenade is plain rather than skinned, so it needs its own draw.
+        const grenade = new THREE.Mesh(this._grenadeGeo, this._grenadeMat);
+        grenade.frustumCulled = false;
+        grenade.position.copy(stage.position);
+        scene.add(grenade);
+        mesh.visible = false;
+        await admit('ai-grenade', this._grenadeMat.name || 'grenade');
+        renderer.setRenderTarget(rt);
+        renderer.render(scene, camera);
+        scene.remove(grenade);
+        mesh.visible = true;
+      } finally {
+        renderer.setRenderTarget(prevRt, prevFace, prevMip);
+        contact?.dispose?.();
+        scene.remove(stage);
+        scene.children.length = 0;
+        dummyGeo.dispose();
+        skeleton.dispose?.();
+        rt.dispose();
+      }
+
       out.programs = (renderer.info.programs?.length ?? 0) - before;
       out.ok = true;
     } catch (err) {
+      if (err?.name === 'AbortError' || signal?.aborted) throw err;
       out.error = String(err?.message ?? err);
     }
     out.ms = Math.round(performance.now() - t0);
@@ -395,6 +579,11 @@ export class AiSystem {
 
   variant(name) {
     let v = this._variants.get(name);
+    if (v && this._variantForkDebt?.delete(name)) {
+      // Preserve the exact parent-stream advance that the old lazy build made
+      // when this variant first appeared in gameplay.
+      this.rng.fork();
+    }
     if (!v) {
       const t0 = performance.now();
       v = buildSoldier(name, { rng: this.rng.fork(), materials: this.materials });
@@ -1157,6 +1346,7 @@ export class AiSystem {
     for (const v of this._variants.values()) v.geometry.dispose();
     this._variants.clear();
     this.materials?.dispose();
+    disposeFaces();
     this.root.parent?.remove(this.root);
   }
 }

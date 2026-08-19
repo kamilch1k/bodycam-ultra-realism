@@ -7,9 +7,25 @@ not guessed. Where something is unverified it says so.
 
 ## The one thing that matters
 
-**The stutters have NOT been confirmed fixed.** Two real unbounded leaks were found
-and fixed, and a 20-wave soak now shows nothing growing — but nobody has played the
-game since. No frame-time profile of actual play exists. See "What was never done".
+**The previously inferred stutters are now measured and fixed on a real GPU.** A
+210-second Chrome trace on an RTX 4080 Laptop GPU covered waves 1–8, burst fire,
+WASD, camera flicks, 38 pickup spawns, 29 accepted pickups, 12 level-ups, death and
+respawn. It recorded 34,258 play frames at p50 6.1 ms, p99 6.2 ms, max 36.5 ms.
+The sole frame over 24 ms was 33.6 ms of browser/OS inactivity followed by 2.8 ms
+of renderer-main work; it had no program/geometry/texture delta. No game system or
+draw call produced a >24 ms frame.
+
+Baseline on the same hardware had seven >24 ms frames and a 1,109 ms maximum:
+
+| trigger | baseline | fixed |
+|---|---:|---:|
+| dropped rifle magazine (rubber/cavity/metal ANGLE links) | 624–1,109 ms | no cold link |
+| first visible pickup | 478 ms | 2.5 ms focused probe; 6.2 ms max across 38 spawns |
+| first visible enemy materials/prepass | 266–327 ms cold frame | 18.1 ms cold frame |
+| wave spawn | 24–55 ms | 12.1 ms max |
+
+The Chrome Performance trace and frame/event data are in the Codex task's
+`outputs/gpu-play-trace-after.json` and `outputs/gpu-play-data-after.json`.
 
 ---
 
@@ -72,8 +88,12 @@ nav          0.06 s
 ~4 s of generation, vs 115 shader programs for the rest
 ```
 
-- **0 of the 115 programs is unused.** Every one is genuinely drawn with, so there is
-  no dead permutation to delete (`tools/program-census.mjs`).
+- The old “0 of 115 programs unused” conclusion was invalid: Three's
+  `WebGLProgram.usedTimes` is a live material reference count, not a draw counter.
+  Boot was compiling 37 duplicate light permutations (3 directional / 4 point,
+  then 3 / 20) while gameplay uses 2 / 20. Mirroring the real light collection,
+  sun takeover and ballast order reduced the hardware prewarm from 117 to 80
+  programs.
 - `compileAsync` (KHR_parallel_shader_compile) and per-stage `requestAnimationFrame`
   yielding are **already implemented**.
 - Character material caching is **correct**: 21/21 textures reused per wave, 0 rebuilt.
@@ -88,24 +108,36 @@ prewarm off   boot  5 s, worst in-play frame 1005 ms
 (48 s is headless software rasterisation, not real hardware — treat the ratio as real
 and the absolute numbers as inflated.)
 
-**The only lever left** is deferring the pose-drawing compile passes past the point of
-interactivity — compile across frames at a budget once the player can already see and
-click something. That is architectural and was not attempted.
+That architectural change is now implemented. The DOM menu paints and becomes
+clickable before engine construction; prewarm admits one coarse driver job per rAF
+and can be aborted/rebuilt when the map changes. Measured on hardware:
+
+```
+menu interactive       0.60-0.63 s
+Play click handling    32 ms
+prewarm                ~8.3 s warm sample, 80 programs (was ~12.6 s / 117)
+full playable          16.9-18.2 s cold samples
+```
+
+The stopped background engine's input is suppressed until Play, so menu clicks
+cannot accidentally request pointer lock. A rejected Miami minimap depth bake is
+also finalized to its existing grid fallback behind the menu; it no longer repeats
+the same 512 px readback at frames 20/40/... during play.
 
 ---
 
 ## What was never done
 
-- **No frame-time profile of real play exists.** `tools/playprofile.mjs` was written to
-  do exactly this — holds WASD, swings the view, fires in bursts, spawns waves, and
-  records per-system CPU cost per frame plus allocation deltas. **It never completed a
-  run**: every attempt exceeded 10 minutes headless and was killed. The harness is the
-  useful part and is committed; it needs a much lower frame count or a real GPU.
-- **Nobody has played the build since the fixes.** All verification is headless.
-- **The teleport bug was fixed earlier and has not regressed in tests**, but was also
-  never re-confirmed by a human playing.
-- **Ghouls upload 4 textures per wave** — pre-existing, unrelated to the survivors work,
-  never chased down.
+- The automated real-rAF/CDP run exercises the requested play path, but it is still
+  scripted rather than a subjective human feel test.
+- The teleport bug remains covered by the existing checks; the hardware profile did
+  not show a camera-flick correlation (flick p99 6.2 ms, max 12.1 ms).
+- The ghoul “4 textures per wave” was chased: these are per-visible-agent Skeleton
+  bone `DataTexture`s, not rebuilt shared character textures. `Agent.dispose()` had
+  never disposed its Skeleton, so old bone textures remained renderer-resident.
+  Skeletons are now disposed. New agents still allocate their tiny bone texture when
+  first visible, but the real trace measured those uploads at 0.1–0.4 ms and the
+  20-wave renderer totals are flat.
 
 ---
 
@@ -142,7 +174,7 @@ paint was deliberately authored cool.
 | `tools/tex-diff.mjs [variant]` | *which* textures a wave adds, by identity |
 | `tools/program-census.mjs` | what the boot shader programs are, how many unused |
 | `tools/boot-profile.mjs` | where boot time goes, by subsystem |
-| `tools/playprofile.mjs` | per-frame cost of scripted play — **never completed** |
+| `tools/playprofile.mjs [frames] --headed` | per-system CPU/allocation scripted play on installed Chrome; final 600-frame run completed, CPU max 4.7 ms, 0 mid-play compiles |
 | `tools/play-check.mjs` | survivors loop wiring end to end |
 | `tools/nopause-check.mjs` | level-ups do not touch time/control/pointer lock |
 | `tools/variant-check.mjs` | every enemy variant builds, moves, dies |

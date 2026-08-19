@@ -709,9 +709,18 @@ export class RenderSystem {
    * @param {boolean} [opts.post=true]   compile the full-screen pass chain
    * @param {boolean} [opts.shadow]      compile the CSM depth + prepass variants;
    *                                     defaults to true only before frame 1
+   * @param {Function} [opts.beforeJob]  awaited before each post material; the
+   *                                     core pre-warmer uses it to admit at most
+   *                                     one driver-heavy blit per animation frame
+   * @param {AbortSignal} [opts.signal]  best-effort cancellation between jobs
    * @returns {Promise<object>} { ok, ms, programsBefore, programsAfter, compiled }
    */
-  async prewarmMaterials({ post = true, shadow = this.frame === 0 } = {}) {
+  async prewarmMaterials({
+    post = true,
+    shadow = this.frame === 0,
+    beforeJob,
+    signal,
+  } = {}) {
     const t0 = performance.now();
     const renderer = this.renderer;
     const ctx = this.ctx;
@@ -789,18 +798,28 @@ export class RenderSystem {
       //    it is drawn into, so a 4x4 scratch target compiles it for free.
       if (post) {
         const scratch = hdrTarget(4, 4, { name: 'prewarm-scratch' });
-        const mats = [];
-        this._collectPassMaterials(mats);
-        for (const m of mats) {
-          try {
-            blit(renderer, m, scratch);
-          } catch {
-            /* a pass with an unsatisfiable uniform must not stop the rest */
+        try {
+          const mats = [];
+          this._collectPassMaterials(mats);
+          for (let i = 0; i < mats.length; i++) {
+            if (beforeJob) await beforeJob({ phase: 'render-post', index: i, total: mats.length });
+            if (signal?.aborted) {
+              const err = new Error('Shader pre-warm aborted');
+              err.name = 'AbortError';
+              throw err;
+            }
+            try {
+              blit(renderer, mats[i], scratch);
+            } catch {
+              /* a pass with an unsatisfiable uniform must not stop the rest */
+            }
           }
+        } finally {
+          scratch.dispose();
         }
-        scratch.dispose();
       }
     } catch (e) {
+      if (e?.name === 'AbortError' || signal?.aborted) throw e;
       return { ok: false, reason: String(e && e.message ? e.message : e) };
     } finally {
       renderer.setRenderTarget(prevTarget);

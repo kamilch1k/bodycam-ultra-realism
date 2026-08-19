@@ -7,6 +7,21 @@ const HITCH_S = 0.024;
 import { Input } from './input.js';
 import { Rng } from './rng.js';
 
+function makeFramePerf() {
+  return {
+    steps: 0,
+    playing: false,
+    fixed: 0,
+    update: 0,
+    late: 0,
+    render: 0,
+    total: 0,
+    systems: new Map(),
+    gpu: { programs: 0, geometries: 0, textures: 0 },
+    hasGpu: false,
+  };
+}
+
 /**
  * The Engine owns the frame loop and the shared context handed to every
  * subsystem. It does NOT know what any subsystem does — it only sequences them.
@@ -73,9 +88,21 @@ export class Engine {
     this._running = false;
     this._onResize = () => this.resize();
 
-    /** Per-system update cost, rewritten each frame, read only by _logHitch. */
-    this._sysMs = new Map();
+    /** Double-buffered diagnostics keep the previous callback immutable until
+     *  its following rAF delta is known, without allocating a Map/object every
+     *  frame (which would make the profiler itself a source of GC pressure). */
+    this._perfFrames = [makeFramePerf(), makeFramePerf()];
+    this._perfCursor = 0;
+    /** Per-system update cost for the latest frame, read by diagnostics/tools. */
+    this._sysMs = this._perfFrames[0].systems;
+    /** Renderer resource baseline is advanced EVERY frame. Advancing it only on
+     *  hitches made a "+10 textures" line mean "since the previous hitch",
+     *  which is not actionable attribution. */
     this._gpuPrev = { programs: 0, geometries: 0, textures: 0 };
+    this._gpuReady = false;
+    /** A rAF delta describes the work done after the PREVIOUS callback. Keep
+     *  that callback's timings so a hitch is attributed to the right frame. */
+    this._prevFramePerf = null;
     this._hitches = 0;
     this._firstStep = 0;
   }
@@ -130,6 +157,7 @@ export class Engine {
 
   /** Advance one frame. Exposed so the capture harness can pump frames by hand. */
   step(now = performance.now()) {
+    const mFrameStart = performance.now();
     const t = this.time;
     /**
      * Clamp so a tab-switch, a breakpoint or a GC pause cannot teleport the
@@ -150,6 +178,21 @@ export class Engine {
     const trueDt = Math.max(0, (now - this._last) / 1000);
     const rawDt = Math.min(MAX_FRAME_DT, trueDt);
     this._last = now;
+
+    if (this._firstStep === 0) this._firstStep = now;
+    const previous = this._prevFramePerf;
+    // `trueDt` is the interval that contains PREVIOUS, not the work we are
+    // about to run. Logging the current maps/timers here was one frame late and
+    // routinely blamed a 2 ms update for a 600 ms driver wait.
+    if (
+      previous?.playing &&
+      !document.hidden &&
+      trueDt > HITCH_S &&
+      now - this._firstStep > 2000
+    ) {
+      this._logHitch(trueDt, previous);
+    }
+
     t.raw += rawDt;
     t.dt = rawDt * t.scale;
     t.elapsed += t.dt;
@@ -171,7 +214,12 @@ export class Engine {
     t.alpha = this._accum / FIXED_DT;
 
     const mUpdate = performance.now();
-    const sysMs = this._sysMs;
+    // `previous` is the other buffer and has already been logged above, so this
+    // record can now be safely reused for the callback currently being timed.
+    const framePerf = this._perfFrames[this._perfCursor];
+    this._perfCursor ^= 1;
+    const sysMs = framePerf.systems;
+    this._sysMs = sysMs;
     // Must be cleared, not just overwritten: a system with lateUpdate and no
     // update is never touched by the loop below, so the += in the late loop
     // would keep adding to last frame's value and climb forever.
@@ -194,28 +242,42 @@ export class Engine {
     if (typeof renderSystem?.render === 'function') renderSystem.render(this.ctx);
     const mEnd = performance.now();
 
-    /**
-     * Ignore the first couple of seconds — boot frames are legitimately enormous.
-     *
-     * The gate must be WALL CLOCK. A frame count is wrong because a struggling
-     * machine is still in single digits when the interesting hitches happen, and
-     * `t.raw` is wrong because it accumulates the CLAMPED dt: at 2 fps it
-     * advances 0.1 s per real second, so a "2 second" gate on it never opens.
-     * Both of those silently suppressed this log before anyone read a line of it.
-     */
-    if (this._firstStep === 0) this._firstStep = now;
-    /**
-     * Only report frames the PLAYER could feel.
-     *
-     * A paused game (scale 0, so zero fixed steps) and a tab that lost focus
-     * both produce enormous frames that are not stutters — rAF throttles to
-     * about 1 Hz on an unfocused tab, so opening DevTools to read this very log
-     * manufactures 3-5 second "hitches" and floods out the real ones.
-     */
-    const playing = steps > 0 && !document.hidden;
-    if (playing && trueDt > HITCH_S && now - this._firstStep > 2000) {
-      this._logHitch(trueDt, steps, [mFixed, mUpdate, mLate, mRender, mEnd]);
+    const info = renderSystem?.renderer?.info;
+    framePerf.hasGpu = false;
+    if (info) {
+      const programs = info.programs?.length ?? 0;
+      const geometries = info.memory?.geometries ?? 0;
+      const textures = info.memory?.textures ?? 0;
+      if (this._gpuReady) {
+        framePerf.gpu.programs = programs - this._gpuPrev.programs;
+        framePerf.gpu.geometries = geometries - this._gpuPrev.geometries;
+        framePerf.gpu.textures = textures - this._gpuPrev.textures;
+        framePerf.hasGpu = true;
+      }
+      this._gpuPrev.programs = programs;
+      this._gpuPrev.geometries = geometries;
+      this._gpuPrev.textures = textures;
+      this._gpuReady = true;
+    } else {
+      this._gpuReady = false;
     }
+
+    /**
+     * Only report frames the PLAYER could feel. A paused game (zero fixed
+     * steps) and a hidden tab are deliberately excluded. The record is one
+     * half of a reusable pair rather than a per-frame object allocation.
+     */
+    framePerf.steps = steps;
+    // At 120/144/165 Hz most perfectly healthy gameplay frames run zero fixed
+    // steps. Using `steps > 0` as the play-state gate silently dropped hitches
+    // on exactly those displays. The modal/pause contract is `time.scale === 0`.
+    framePerf.playing = t.scale > 0 && !document.hidden;
+    framePerf.fixed = mUpdate - mFixed;
+    framePerf.update = mLate - mUpdate;
+    framePerf.late = mRender - mLate;
+    framePerf.render = mEnd - mRender;
+    framePerf.total = mEnd - mFrameStart;
+    this._prevFramePerf = framePerf;
 
     this.input.endFrame();
   }
@@ -231,37 +293,22 @@ export class Engine {
    * compiled a shader or uploaded geometry — the two things that stall a WebGL
    * frame no matter how cheap the JavaScript was.
    */
-  _logHitch(rawDt, steps, [mFixed, mUpdate, mLate, mRender, mEnd]) {
+  _logHitch(rawDt, frame) {
     if (++this._hitches > 40) return; // enough to diagnose; don't flood the console
-    const worst = [...this._sysMs.entries()]
+    const worst = [...frame.systems.entries()]
       .sort((a, b) => b[1] - a[1])
       .filter(([, ms]) => ms >= 0.5)
       .slice(0, 3)
       .map(([id, ms]) => `${id} ${ms.toFixed(1)}`)
       .join(', ');
 
-    const info = this.registry.peek('render')?.renderer?.info;
-    const prev = this._gpuPrev;
     let gpu = '';
-    // First report has no baseline to diff against — seeding it from zero made
-    // the first line claim "+135 programs", i.e. the entire boot, as if it were
-    // one frame's work.
-    if (info && this._hitches === 1) {
-      prev.programs = info.programs?.length ?? 0;
-      prev.geometries = info.memory?.geometries ?? 0;
-      prev.textures = info.memory?.textures ?? 0;
-    }
-    if (info) {
-      const now = {
-        programs: info.programs?.length ?? 0,
-        geometries: info.memory?.geometries ?? 0,
-        textures: info.memory?.textures ?? 0,
-      };
+    if (frame.hasGpu) {
       const d = [];
       for (const k of ['programs', 'geometries', 'textures']) {
-        if (now[k] > prev[k]) d.push(`+${now[k] - prev[k]} ${k}`);
+        if (frame.gpu[k] > 0) d.push(`+${frame.gpu[k]} ${k}`);
+        else if (frame.gpu[k] < 0) d.push(`${frame.gpu[k]} ${k}`);
       }
-      this._gpuPrev = now;
       if (d.length) gpu = `  | ${d.join(' ')}`;
     }
 
@@ -272,13 +319,13 @@ export class Engine {
      * `outside` is not a JavaScript problem and no amount of profiling the
      * update loop will find it.
      */
-    const outside = rawDt * 1000 - (mEnd - mFixed);
+    const outside = rawDt * 1000 - frame.total;
     console.warn(
       `[hitch] ${(rawDt * 1000).toFixed(0)}ms` +
-        `  fixed ${(mUpdate - mFixed).toFixed(1)} (${steps} steps)` +
-        `  update ${(mLate - mUpdate).toFixed(1)}` +
-        `  late ${(mRender - mLate).toFixed(1)}` +
-        `  render ${(mEnd - mRender).toFixed(1)}` +
+        `  fixed ${frame.fixed.toFixed(1)} (${frame.steps} steps)` +
+        `  update ${frame.update.toFixed(1)}` +
+        `  late ${frame.late.toFixed(1)}` +
+        `  render ${frame.render.toFixed(1)}` +
         `  outside ${outside.toFixed(0)}` +
         (worst ? `  | ${worst}` : '') +
         gpu
@@ -289,7 +336,17 @@ export class Engine {
     this.stop();
     removeEventListener('resize', this._onResize);
     this.input.detach();
-    for (const sys of [...this.registry.ordered].reverse()) sys.dispose?.();
+    // A menu selection can supersede an engine while init is only partially
+    // complete. One not-yet-initialised subsystem must not prevent the already
+    // initialised renderer/world systems behind it from releasing their GPU
+    // resources, so cleanup is isolated per subsystem.
+    for (const sys of [...this.registry.ordered].reverse()) {
+      try {
+        sys.dispose?.();
+      } catch (err) {
+        console.warn(`[engine] ${sys.constructor.id} dispose failed:`, err);
+      }
+    }
     this.events.clear();
   }
 }

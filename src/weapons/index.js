@@ -237,6 +237,272 @@ export class WeaponSystem {
     );
   }
 
+  /**
+   * Materialise every world-space dropped-magazine resource before the first
+   * reload asks for it.
+   *
+   * The viewmodel already draws these shared materials, but that does not warm
+   * their world-scene programs: the two scenes have different light counts and
+   * therefore different Three/ANGLE cache keys. `compileAsync()` is also not the
+   * finish line on D3D/ANGLE; translation may remain pending until the first real
+   * draw calls `GetProgramiv`. The measured result was a 624 ms wait for the
+   * rubber base pad, followed by 1.1 s for the cavity/metal variants on a later
+   * reload.
+   *
+   * Build the real reusable pools, then draw borrowed geometry/material pairs
+   * into 1 px targets. Nothing enters gameplay: the pool groups stay hidden, no
+   * body is spawned, and ammo, RNG, clips and the simulation clock are untouched.
+   *
+   * @param {object} [ctx=this.ctx]
+   * @param {object} [opts]
+   * @param {Function} [opts.beforeJob] optional pacing gate, awaited between
+   *   coarse driver jobs
+   * @param {AbortSignal} [opts.signal]
+   */
+  async prewarmMaterials(ctx = this.ctx, { beforeJob, signal } = {}) {
+    if (this._magWarmResult) return this._magWarmResult;
+    if (this._magWarmPromise) return this._magWarmPromise;
+
+    const abortError = () => {
+      const err = new Error('Dropped-magazine pre-warm aborted');
+      err.name = 'AbortError';
+      return err;
+    };
+    const checkAbort = () => {
+      if (signal?.aborted) throw abortError();
+    };
+    const admit = async (phase, index, total) => {
+      checkAbort();
+      if (beforeJob) await beforeJob({ phase, index, total });
+      checkAbort();
+    };
+
+    const run = async () => {
+      const render = ctx?.peek?.('render') ?? ctx?.get?.('render');
+      const renderer = render?.renderer;
+      const camera = ctx?.camera;
+      if (!renderer || !camera || !this.viewmodel) {
+        return { ok: false, reason: 'renderer or viewmodel unavailable' };
+      }
+
+      const programsBefore = renderer.info.programs?.length ?? 0;
+      const geometriesBefore = renderer.info.memory.geometries;
+      const t0 = performance.now();
+      const scratch = new THREE.Scene();
+      const world = ctx.peek?.('world') ?? ctx.get?.('world');
+
+      // Match the world pass's scene-level permutation inputs.
+      scratch.fog = ctx.scene.fog;
+      scratch.environment = ctx.scene.environment;
+      scratch.environmentIntensity = ctx.scene.environmentIntensity;
+      if (scratch.environmentRotation && ctx.scene.environmentRotation) {
+        scratch.environmentRotation.copy(ctx.scene.environmentRotation);
+      }
+
+      /**
+       * Reproduce the light set the first real RenderSystem frame will submit,
+       * without changing any live light's visibility or intensity.
+       *
+       * Registered punctual lights are distance-culled in render._cullLights().
+       * World ballast then pads the visible point-light count to `_lightTarget`.
+       * Clones give the scratch scene exactly those program-key counts while the
+       * real scene remains byte-for-byte untouched.
+       */
+      camera.updateMatrixWorld(true);
+      const camPos = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+      const registered = new Map((render.lights ?? []).map((entry) => [entry.light, entry]));
+      const directional = [];
+      const otherLights = [];
+      let pointLights = 0;
+      const ancestorsVisible = (object) => {
+        for (let p = object.parent; p && p !== ctx.scene; p = p.parent) {
+          if (p.visible === false) return false;
+        }
+        return true;
+      };
+      ctx.scene.traverse((light) => {
+        if (!light.isLight || light.userData?.owBallast === true || !ancestorsVisible(light)) return;
+        const entry = registered.get(light);
+        let visible = light.visible !== false;
+        if (entry) {
+          const d = light.position.distanceTo(camPos);
+          const fade = 1 - THREE.MathUtils.smoothstep(d, entry.range * 0.75, entry.range * 1.15);
+          visible = fade > 0.002;
+        }
+        if (!visible) return;
+        if (light.isDirectionalLight) directional.push(light);
+        else {
+          otherLights.push(light);
+          if (light.isPointLight) pointLights++;
+        }
+      });
+
+      // RenderSystem hides its fallback sun when the sky owns a stronger one,
+      // and disables that sky light's built-in shadow in favour of the CSM.
+      const foreignSun = directional
+        .filter((light) => light !== render.sun)
+        .reduce((best, light) => !best || light.intensity > best.intensity ? light : best, null);
+      for (const light of directional) {
+        if (light === render.sun && foreignSun?.intensity > 0.01) continue;
+        const clone = light.clone();
+        if (light === foreignSun && foreignSun.intensity > 0.01) clone.castShadow = false;
+        scratch.add(clone);
+      }
+      for (const light of otherLights) scratch.add(light.clone());
+
+      const pointTarget = Math.max(pointLights, world?._lightTarget ?? pointLights);
+      while (pointLights++ < pointTarget) {
+        const ballast = new THREE.PointLight(0x000000, 0, 0.01, 2);
+        ballast.position.set(0, -1000, 0);
+        scratch.add(ballast);
+      }
+
+      const forwardRt = new THREE.WebGLRenderTarget(1, 1, {
+        type: THREE.HalfFloatType,
+        format: THREE.RGBAFormat,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        depthBuffer: true,
+        stencilBuffer: false,
+        generateMipmaps: false,
+      });
+      forwardRt.texture.name = 'prewarm-dropped-mag';
+
+      // Match the real three-attachment prepass target so the override program
+      // and every magazine geometry/VAO are also materialised before gameplay.
+      const prepassRt = new THREE.WebGLRenderTarget(1, 1, {
+        count: 3,
+        type: THREE.HalfFloatType,
+        format: THREE.RGBAFormat,
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        depthBuffer: true,
+        stencilBuffer: false,
+        generateMipmaps: false,
+      });
+      prepassRt.textures[1].format = THREE.RGFormat;
+      prepassRt.textures[1].type = THREE.HalfFloatType;
+      prepassRt.textures[2].format = THREE.RedFormat;
+      prepassRt.textures[2].type = THREE.FloatType;
+
+      const prevRt = renderer.getRenderTarget();
+      const prevFace = renderer.getActiveCubeFace?.() ?? 0;
+      const prevMip = renderer.getActiveMipmapLevel?.() ?? 0;
+      const weapons = [...this.viewmodel.weapons.values()];
+      const forwardTotal = weapons.reduce(
+        (total, weapon) => total + (this._ensureMagPool(weapon)[0]?.group.children.filter((o) => o.isMesh).length ?? 0),
+        0
+      );
+      let forwardIndex = 0;
+      let draws = 0;
+
+      try {
+        for (let index = 0; index < weapons.length; index++) {
+          const weapon = weapons[index];
+          // Creation only: unlike _magProxy(), this never selects an in-flight
+          // proxy or removes its rigid body when a late retry is requested.
+          const pool = this._ensureMagPool(weapon);
+          const warmRoot = new THREE.Group();
+          warmRoot.name = `prewarm-dropped-mag-${weapon.id}`;
+          for (const source of pool[0]?.group.children ?? []) {
+            if (!source.isMesh) continue;
+            const mesh = new THREE.Mesh(source.geometry, source.material);
+            mesh.name = source.name;
+            mesh.frustumCulled = false;
+            mesh.castShadow = true;
+            mesh.receiveShadow = false;
+            render.patcher?.patch?.(mesh.material);
+            warmRoot.add(mesh);
+          }
+          if (!warmRoot.children.length) continue;
+          scratch.add(warmRoot);
+          try {
+            const prepass = render.gbuffer?.material;
+            if (render.needsPrepass && prepass) {
+              await admit('weapons-mag-prepass', index, weapons.length);
+              const vp = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+              prepass.uniforms.owCurrVP.value.copy(vp);
+              prepass.uniforms.owPrevVP.value.copy(vp);
+              scratch.overrideMaterial = prepass;
+              renderer.setRenderTarget(prepassRt);
+              renderer.render(scratch, camera);
+              scratch.overrideMaterial = null;
+              draws++;
+            }
+
+            /**
+             * One material/geometry per admitted job.
+             *
+             * Drawing the whole magazine at once simply moved the measured
+             * rubber + cavity + metal waits into one 1-2 second menu freeze. A
+             * shader job cannot be pre-empted once ANGLE starts it, but isolating
+             * each child guarantees no frame starts more than one such job. The
+             * prepass above already uploaded every geometry; these forward draws
+             * finish each world-lit program and its program-specific VAO.
+             */
+            for (const child of warmRoot.children) child.visible = false;
+            for (const child of warmRoot.children) {
+              if (!child.isMesh) continue;
+              child.visible = true;
+              try {
+                await admit('weapons-mag-compile', forwardIndex, forwardTotal);
+                renderer.setRenderTarget(forwardRt);
+                try {
+                  await renderer.compileAsync(scratch, camera);
+                } catch {
+                  renderer.compile(scratch, camera);
+                }
+
+                // compileAsync may resolve in a later task. Re-enter through the
+                // frame gate so the blocking first draw is budgeted independently.
+                await admit('weapons-mag-forward', forwardIndex, forwardTotal);
+                renderer.setRenderTarget(forwardRt);
+                renderer.render(scratch, camera);
+                draws++;
+              } finally {
+                child.visible = false;
+                forwardIndex++;
+              }
+            }
+          } finally {
+            scratch.overrideMaterial = null;
+            scratch.remove(warmRoot);
+          }
+        }
+        checkAbort();
+      } finally {
+        scratch.overrideMaterial = null;
+        renderer.setRenderTarget(prevRt, prevFace, prevMip);
+        scratch.clear();
+        forwardRt.dispose();
+        prepassRt.dispose();
+      }
+
+      return {
+        ok: true,
+        ms: Math.round(performance.now() - t0),
+        weapons: weapons.length,
+        draws,
+        programs: (renderer.info.programs?.length ?? 0) - programsBefore,
+        geometries: renderer.info.memory.geometries - geometriesBefore,
+      };
+    };
+
+    this._magWarmPromise = run()
+      .then((result) => {
+        if (result.ok) this._magWarmResult = result;
+        return result;
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError' || signal?.aborted) throw err;
+        return { ok: false, reason: String(err?.message ?? err) };
+      })
+      .finally(() => {
+        this._magWarmPromise = null;
+      });
+    return this._magWarmPromise;
+  }
+
   /* ====================================================================== */
   /*  public getters                                                        */
   /* ====================================================================== */
@@ -774,8 +1040,8 @@ export class WeaponSystem {
     }
   }
 
-  /** Two reusable world-space magazine props per weapon. */
-  _magProxy(w) {
+  /** Create the two reusable world-space magazine props for one weapon. */
+  _ensureMagPool(w) {
     if (!this._magPools) this._magPools = new Map();
     let pool = this._magPools.get(w.id);
     if (!pool) {
@@ -801,6 +1067,12 @@ export class WeaponSystem {
       }
       this._magPools.set(w.id, pool);
     }
+    return pool;
+  }
+
+  /** Select the oldest reusable world-space magazine prop. */
+  _magProxy(w) {
+    const pool = this._ensureMagPool(w);
     // Reuse the oldest.
     let best = pool[0];
     for (const p of pool) if (p.until < best.until) best = p;

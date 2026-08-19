@@ -250,10 +250,24 @@ export function prewarmPickups() {
   for (const kind of Object.keys(PICKUPS)) makePickup(kind);
 }
 
+/**
+ * A menu map change tears down one renderer before constructing the next. The
+ * shared caches must follow that renderer lifetime: otherwise the next
+ * MaterialPatcher wraps an already-patched material (duplicate GLSL), while the
+ * old renderer keeps the geometry/texture handles resident until context loss.
+ */
+function disposePickupResources() {
+  for (const resource of Object.values(PICKUP_GEO)) resource?.dispose?.();
+  for (const resource of Object.values(PICKUP_MAT)) resource?.dispose?.();
+  for (const key of Object.keys(PICKUP_GEO)) delete PICKUP_GEO[key];
+  for (const key of Object.keys(PICKUP_MAT)) delete PICKUP_MAT[key];
+}
+
 function makePickup(kind) {
   const spec = PICKUPS[kind] ?? PICKUPS.chest;
   PICKUP_GEO[kind] ??= new THREE.BoxGeometry(...spec.size);
   PICKUP_MAT[kind] ??= new THREE.MeshStandardMaterial({
+    name: `pickup-${kind}`,
     color: spec.color,
     emissive: spec.emissive,
     emissiveIntensity: 1.5,
@@ -489,9 +503,87 @@ export class PerkSystem {
    * Called by core/prewarm.js. Builds the shared pickup geometry and materials
    * at boot so the first drop of a run is not the frame that compiles them.
    */
-  prewarmMaterials() {
+  async prewarmMaterials() {
     prewarmPickups();
-    return { ok: true, materials: Object.keys(PICKUPS).length };
+    const render = this.ctx.peek('render');
+    const renderer = render?.renderer;
+    if (!renderer) return { ok: false, reason: 'no renderer' };
+
+    const before = renderer.info.programs?.length ?? 0;
+    const scratch = new THREE.Scene();
+    scratch.fog = this.ctx.scene.fog;
+    scratch.environment = this.ctx.scene.environment;
+    scratch.environmentIntensity = this.ctx.scene.environmentIntensity;
+    if (scratch.environmentRotation && this.ctx.scene.environmentRotation) {
+      scratch.environmentRotation.copy(this.ctx.scene.environmentRotation);
+    }
+    // Match the light permutation of the real world draw. Passing the gameplay
+    // scene as compileAsync's `targetScene` while ALSO borrowing its lights
+    // double-counted them and warmed a program gameplay never used.
+    this.ctx.peek('world')?._stabiliseLightCount?.(this.ctx);
+    this.ctx.camera.updateMatrixWorld(true);
+    // _syncSun reads RenderSystem's collected directional-light list. At boot
+    // that list is still empty, so calling it directly leaves the fallback sun
+    // visible alongside sky-sun + sky-moon and warms NUM_DIR_LIGHTS=3. The first
+    // gameplay frame collects first, hides the fallback, and draws with 2 — a
+    // distinct program that ANGLE then translated on the first pickup (414 ms on
+    // RTX 4080). Mirror the real render ordering before borrowing the light set.
+    render?._collect?.(this.ctx.scene);
+    render?._syncSun?.(this.ctx.camera);
+    const camPos = new THREE.Vector3();
+    this.ctx.camera.getWorldPosition(camPos);
+    render?._cullLights?.(camPos);
+    // The actual draw that forces ANGLE translation needs the real light set.
+    // Borrow references without re-parenting them; gameplay stays untouched.
+    this.ctx.scene.traverse((object) => {
+      if (!object.isLight || !object.visible) return;
+      for (let p = object.parent; p && p !== this.ctx.scene; p = p.parent) {
+        if (!p.visible) return;
+      }
+      scratch.children.push(object);
+    });
+    for (const kind of Object.keys(PICKUPS)) {
+      const mesh = makePickup(kind);
+      mesh.frustumCulled = false;
+      scratch.children.push(mesh);
+      render?.patcher?.patch?.(mesh.material);
+    }
+
+    const prevRt = renderer.getRenderTarget();
+    const prevFace = renderer.getActiveCubeFace?.() ?? 0;
+    const prevMip = renderer.getActiveMipmapLevel?.() ?? 0;
+    const rt = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType,
+      format: THREE.RGBAFormat,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      depthBuffer: true,
+      stencilBuffer: false,
+      generateMipmaps: false,
+    });
+    try {
+      renderer.setRenderTarget(rt);
+      try {
+        await renderer.compileAsync(scratch, this.ctx.camera);
+      } catch {
+        renderer.compile(scratch, this.ctx.camera);
+      }
+      // Creating the program is not enough on ANGLE/D3D: translation can stay
+      // pending until GetProgramiv on the first real draw. Draw the borrowed
+      // meshes into a 1 px target now so the first mid-wave drop is cheap.
+      renderer.render(scratch, this.ctx.camera);
+    } catch (err) {
+      return { ok: false, reason: String(err?.message ?? err) };
+    } finally {
+      renderer.setRenderTarget(prevRt, prevFace, prevMip);
+      scratch.children.length = 0;
+      rt.dispose();
+    }
+    return {
+      ok: true,
+      materials: Object.keys(PICKUPS).length,
+      compiled: (renderer.info.programs?.length ?? 0) - before,
+    };
   }
 
   dispose() {
@@ -501,6 +593,9 @@ export class PerkSystem {
     this._offKill?.();
     for (const c of this.chests) c.parent?.remove(c);
     this.chests.length = 0;
+    // Engines are replaced serially by the front menu, so no live scene still
+    // borrows these module-level resources when this system is disposed.
+    disposePickupResources();
     if (this.ctx) this.ctx.perks = null;
   }
 }

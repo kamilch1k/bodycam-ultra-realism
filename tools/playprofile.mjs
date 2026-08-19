@@ -19,13 +19,31 @@
  *                           its draw cost is fiction and is reported separately
  *                           so it never contaminates the CPU ranking.
  *
- *   node tools/playprofile.mjs [frames]
+ *   node tools/playprofile.mjs [frames] [--headed]
  */
 import { chromium } from 'playwright';
 
-const FRAMES = Number(process.argv[2] ?? 1800);
+const cli = process.argv.slice(2);
+const FRAMES = Number(cli.find((arg) => /^\d+$/.test(arg)) ?? 1800);
+const HEADED = cli.includes('--headed');
 
-const b = await chromium.launch({ headless: true, args: ['--mute-audio'] });
+const b = await chromium.launch({
+  ...(HEADED ? { channel: 'chrome' } : {}),
+  headless: !HEADED,
+  args: HEADED
+    ? [
+      '--use-angle=d3d11',
+      '--ignore-gpu-blocklist',
+      '--enable-gpu-rasterization',
+      '--disable-software-rasterizer',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-features=CalculateNativeWinOcclusion',
+      '--mute-audio',
+    ]
+    : ['--mute-audio'],
+});
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 const errors = [];
 p.on('pageerror', (e) => errors.push(e.message.split('\n')[0]));
@@ -35,6 +53,17 @@ p.on('console', (m) => {
 await p.goto('http://127.0.0.1:5181/?map=miami&menu=0&q=high', { waitUntil: 'domcontentloaded' });
 await p.waitForFunction('!!window.__ENGINE__', null, { timeout: 600000 });
 await p.waitForTimeout(3000);
+
+const gpu = await p.evaluate(() => {
+  const gl = window.__ENGINE__?.ctx.peek('render')?.renderer?.getContext?.();
+  const ext = gl?.getExtension?.('WEBGL_debug_renderer_info');
+  return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown';
+});
+if (HEADED && /swiftshader|software|llvmpipe|warp/i.test(gpu)) {
+  await b.close();
+  throw new Error(`--headed requested a hardware profile, got ${gpu}`);
+}
+console.log(`GPU: ${gpu}`);
 
 const out = await p.evaluate(async (frames) => {
   const e = window.__ENGINE__;

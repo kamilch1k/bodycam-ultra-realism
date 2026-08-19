@@ -158,9 +158,15 @@ function el(html) {
 }
 
 /**
- * Paint the menu and resolve with the player's choice once they hit Play.
+ * Paint the menu and return a controller immediately.
+ *
+ * Returning before Play is important: the selected map can initialise and
+ * pre-warm in paced jobs BEHIND this DOM layer while the player can still read
+ * the career panel, change map, use fullscreen and press Play. The old Promise
+ * API made that overlap structurally impossible.
  * @param {{map?:string, mode?:string}} initial  pre-selection from the URL
- * @returns {Promise<{map:string, mode:string}>}
+ * @returns {{choice:{map:string,mode:string}, play:Promise<object>,
+ *   changed:(fn:Function)=>Function, setBusy:(busy:boolean)=>void, done:()=>void}}
  */
 export function showMainMenu(initial = {}) {
   const style = document.createElement('style');
@@ -211,6 +217,13 @@ export function showMainMenu(initial = {}) {
   document.body.appendChild(root);
   root.querySelector('.ow-fsbtn')?.addEventListener('click', () => fs.toggle());
 
+  const listeners = new Set();
+  const choice = () => ({ map, mode });
+  const changed = () => {
+    const value = choice();
+    for (const fn of listeners) fn(value);
+  };
+
   const pick = (container, onPick) => {
     // A column that was not rendered is a legitimate state, not a bug: with one
     // mode there is nothing to choose between, so `#ow-modes` is absent and this
@@ -219,38 +232,63 @@ export function showMainMenu(initial = {}) {
     container.addEventListener('click', (e) => {
       const b = e.target.closest('button[data-id]');
       if (!b) return;
+      const before = `${map}\0${mode}`;
       for (const other of container.querySelectorAll('button[data-id]')) {
         other.setAttribute('aria-pressed', String(other === b));
       }
       onPick(b.dataset.id);
+      if (`${map}\0${mode}` !== before) changed();
     });
   };
   pick(root.querySelector('#ow-maps'), (id) => (map = id));
   pick(root.querySelector('#ow-modes'), (id) => (mode = id));
 
-  return new Promise((resolve) => {
-    const go = () => {
-      /**
-       * Play is the last user gesture before the match, and a gesture is the only
-       * moment a browser will grant fullscreen. On touch that is not optional:
-       * Yandex requires the game to already BE fullscreen during gameplay, and
-       * the browser chrome otherwise eats the thumb rests. Deliberately not
-       * awaited — a device that refuses must still start the match.
-       */
-      if (matchMedia?.('(pointer: coarse)')?.matches) fs.request();
+  let busy = false;
+  let played = false;
+  let resolvePlay;
+  const play = new Promise((resolve) => (resolvePlay = resolve));
+  const go = () => {
+    if (busy || played) return;
+    played = true;
+    /**
+     * Play is the last user gesture before the match, and a gesture is the only
+     * moment a browser will grant fullscreen. On touch that is not optional:
+     * Yandex requires the game to already BE fullscreen during gameplay, and
+     * the browser chrome otherwise eats the thumb rests. Deliberately not
+     * awaited — a device that refuses must still start the match.
+     */
+    if (matchMedia?.('(pointer: coarse)')?.matches) fs.request();
+    resolvePlay(choice());
+  };
+  root.querySelector('.ow-play').addEventListener('click', go);
+  const onKey = (e) => {
+    if (e.key === 'Enter' && root.isConnected) go();
+  };
+  addEventListener('keydown', onKey);
+
+  return {
+    get choice() {
+      return choice();
+    },
+    play,
+    changed(fn) {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+    setBusy(next) {
+      busy = !!next;
+      root.setAttribute('aria-busy', String(busy));
+      for (const button of root.querySelectorAll('.ow-play, button[data-id]')) {
+        button.disabled = busy;
+      }
+    },
+    done() {
+      removeEventListener('keydown', onKey);
+      listeners.clear();
       root.remove();
-      resolve({ map, mode });
-    };
-    root.querySelector('.ow-play').addEventListener('click', go);
-    // Enter plays with whatever is selected.
-    addEventListener(
-      'keydown',
-      (e) => {
-        if (e.key === 'Enter' && root.isConnected) go();
-      },
-      { once: false }
-    );
-  });
+      style.remove();
+    },
+  };
 }
 
 /** Full-screen loading state. Returns a handle with `.done()`. */

@@ -147,6 +147,17 @@ export function prewarmFaces(renderer = null) {
   }
 }
 
+/** Release the renderer-owned shared face set when an Engine is replaced. */
+export function disposeFaces() {
+  for (let i = 0; i < FACES.length; i++) {
+    const material = FACES[i];
+    if (!material) continue;
+    material.map?.dispose?.();
+    material.dispose();
+    FACES[i] = null;
+  }
+}
+
 export function attachBillboard(group, { seed = 0, height = 1.85 } = {}) {
   const sprite = new THREE.Sprite(faceMaterial(seed));
   sprite.scale.setScalar(height);

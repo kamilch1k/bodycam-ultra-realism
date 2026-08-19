@@ -1312,6 +1312,11 @@ export class Agent {
     for (const c of this.colliders) this.phys?.removeCollider(c);
     this.colliders.length = 0;
     if (this.ragdoll) this.phys?.removeRagdoll(this.ragdoll);
+    // Three allocates a private floating-point bone texture the first time each
+    // Skeleton is rendered.  Removing the group does not release it; without
+    // disposing the Skeleton every cleared wave leaves those GPU textures
+    // resident even though all geometry and character materials are shared.
+    this.skeleton?.dispose?.();
     this.group.parent?.remove(this.group);
   }
 }
