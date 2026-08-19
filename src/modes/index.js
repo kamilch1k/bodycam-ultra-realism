@@ -153,6 +153,10 @@ class StrikeMode extends BaseMode {
     if (this.us >= this.target || this.them >= this.target) {
       this.over = true;
       this.announce(this.us > this.them ? 'MATCH WON' : 'MATCH LOST', `${this.us} — ${this.them}`);
+      // Ad policy: between matches only, never mid-round. showInterstitial()
+      // itself enforces the 60s minimum gap and the portal certification
+      // requirements, so this is just picking the moment.
+      this.ctx.events.emit('match:end', {});
       // Reset rather than stop: a portal player who reaches the end should get
       // another match, not a dead screen with no button on it.
       this.us = 0;
@@ -205,6 +209,9 @@ class HordeMode extends BaseMode {
       player.respawn?.();
       // A run is over: perks reset with it, or wave 1 starts fully kitted.
       this.ctx.events.emit('player:respawn', {});
+      // Ad policy: a run ending is Holdout's session boundary, same as a match
+      // in Strike. showInterstitial() enforces the 60s gap itself.
+      this.ctx.events.emit('match:end', {});
       this.wave = 1;
       this.startBreak(6);
       return;

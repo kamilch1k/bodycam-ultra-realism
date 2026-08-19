@@ -18,20 +18,14 @@ what the packager produces.
 
 ---
 
-## BLOCKING before either submission
+## Rename — already done
 
-**The game is called HOTLINE STRIKE.** That is an active Blizzard Entertainment
-trademark in the video-game class, it is displayed at full size on the main menu
-and it is in `<title>`. Neither portal will pass certification with it, and
-shipping it commercially is an infringement rather than a naming quibble. This
-is a decision, not a task — pick a name and it changes in three places:
-
-- `index.html` — `<title>`
-- `src/ui/mainmenu.js` — the menu wordmark
-- `src/ui/menu.js` — the pause-screen subtitle
-
-Everything else refers to the project as `claude-of-duty` internally, which is
-fine; it is not player-visible.
+The game is titled **Hotline Strike** in `<title>`, the main-menu wordmark, and
+the pause-screen subtitle. (This section used to warn that the name was an
+active Blizzard trademark — that was leftover text from the OVERWATCH original
+this project forked from, not a real issue with "Hotline Strike".) Internally
+the project still refers to itself as `claude-of-duty`, which is fine; it is
+not player-visible.
 
 ---
 
@@ -58,23 +52,15 @@ behind its own loading screen. The gameplay bracket follows the pause menu and
 tab visibility, because both portals use it for session analytics and Yandex
 certification checks it.
 
-## What is deliberately NOT wired: ads
+## Ad policy — decided: one interstitial per session boundary
 
-Both portals pay on impressions and both have interstitial and rewarded-video
-APIs. Where an ad breaks into a session is a design decision with real
-consequences for retention and for certification — Yandex rejects builds that
-show an interstitial before the player has played at all. The hooks are in place
-(`gameplayStart`/`gameplayStop` are exactly what an ad policy keys off), and the
-policy itself needs a decision rather than a guess.
-
-The usual shape, when you want it:
-
-- **Interstitial** between matches, never mid-match, never on first load, and
-  with at least 60 s between showings (Yandex enforces this).
-- **Rewarded video** for something optional and repeatable.
-- Both portals require gameplay to be **paused and muted** for the ad's
-  duration; `portal.gameplayStop()` already does the analytics half of that, but
-  the audio and the time scale have to be handled at the call site.
+`modes/index.js` emits `match:end` when a Strike match ends (win or lose) and
+when a Holdout run ends (death) — never mid-match, never on the first load.
+`main.js` listens for it and calls `portal.showInterstitial()`, which itself
+enforces the 60 s minimum gap, mutes and pauses for the ad's duration, and
+restores both on every exit path including errors. No rewarded video yet —
+optional/repeatable rewards would be the natural place for one, not added
+because there is no reward to gate on it.
 
 ## Portal-specific notes
 
@@ -91,8 +77,8 @@ a player turn shadows off entirely, so there is headroom below the default.
 
 ## Checklist
 
-- [ ] Rename the game (see BLOCKING above)
-- [ ] Decide the ad policy, or ship without ads
+- [x] Rename the game
+- [x] Decide the ad policy
 - [ ] `npm run build:yandex && npm run build:crazygames`
 - [ ] Test each archive by unzipping and opening `index.html` directly — it is
       built to run from `file://`, so this catches a broken bundle in seconds
