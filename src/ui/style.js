@@ -655,8 +655,12 @@ const CSS = `
 }
 .ow-banner-t {
   font-family: var(--fd);
-  font-size: calc(30px * var(--k)); letter-spacing:.3em; font-weight:700;
-  text-shadow: var(--sh-o2);
+  font-size: calc(44px * var(--k)); letter-spacing:.3em; font-weight:700;
+  /* Pure white, no outline: the scrim behind (::before) is what seats the type
+     against a blown sky, so the outline was doing the same job twice and only
+     muddying the edges. Bare glow instead — it lifts without thickening. */
+  color: #fff;
+  text-shadow: 0 0 calc(18px * var(--k)) rgba(255,255,255,.30);
 }
 .ow-banner-s {
   margin-top: calc(var(--u) * 1.4);

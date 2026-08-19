@@ -218,9 +218,13 @@ export const VARIANTS = {
    * FLATTY — a cardboard cut-out that sprints at you.
    *
    * Drawn as a billboard sprite (see billboard.js), so it has literally no
-   * thickness and never turns: strafing around one is the joke. Statistically
-   * a slightly quicker, slightly frailer ghoul, so it is a real enemy rather
-   * than a gag that plays itself.
+   * thickness and never turns: strafing around one is the joke.
+   *
+   * SPEED IS THE WHOLE CHARACTER. At 5.8 it was slower than a sprinting player
+   * (6.1) — you could simply walk away from the joke, so it never landed. 9.6
+   * outruns sprint and edges tactical sprint (8.38), which is the Gmod fast-
+   * zombie read: you cannot disengage, you have to turn and deal with it.
+   * Lower this first if waves 3+ feel unfair; it is the only knob that matters.
    *
    * The `camo`/tint fields below are still read when the rig is built — the rig
    * exists and is simply hidden, because physics needs its skeleton for the
@@ -231,7 +235,7 @@ export const VARIANTS = {
     billboard: true,
     flatHeight: 1.95,
     health: 70,
-    rushSpeed: 5.8,
+    rushSpeed: 9.6,
     melee: { range: 2.0, damage: 11, interval: 0.95 },
     camo: 'woodland',
     clothTint: [0.9, 0.9, 0.9],
