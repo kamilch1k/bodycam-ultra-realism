@@ -24,6 +24,10 @@ const STRINGS = {
     'load.loading': 'Loading',
     'load.note': 'Generating textures, geometry and shaders — nothing is downloaded.',
 
+    'map.miami': 'Miami',
+    'map.miami.blurb': 'A penthouse rooftop under a midday sun — pool deck, bar, helipad terrace.',
+    'map.zone': 'The Zone',
+    'map.zone.blurb': 'A Soviet industrial yard. Panel block, workshop, substation, roofs you can climb.',
     'map.strike': 'Strike',
     'map.strike.blurb': 'Two spawns, two lanes, one site. The classic competitive shape.',
     'map.holdout': 'Holdout',
@@ -84,6 +88,10 @@ const STRINGS = {
     'load.loading': 'Загрузка',
     'load.note': 'Генерация текстур, геометрии и шейдеров — ничего не скачивается.',
 
+    'map.miami': 'Майами',
+    'map.miami.blurb': 'Крыша пентхауса под полуденным солнцем: бассейн, бар, вертолётная площадка.',
+    'map.zone': 'Зона',
+    'map.zone.blurb': 'Промзона: панельный дом, цех, подстанция и крыши, на которые можно забраться.',
     'map.strike': 'Страйк',
     'map.strike.blurb': 'Два спавна, две линии, одна точка. Классическая схема.',
     'map.holdout': 'Оплот',
