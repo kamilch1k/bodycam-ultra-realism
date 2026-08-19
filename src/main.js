@@ -358,6 +358,10 @@ engine.events.on('ui:pause', ({ paused }) => {
   if (paused) portal.gameplayStop();
   else portal.gameplayStart();
 });
+// Ad policy: one interstitial per session boundary (Strike match end, Holdout
+// run end), never mid-match. showInterstitial() no-ops without a portal SDK
+// and enforces its own 60s minimum gap, so this call site cannot get it wrong.
+engine.events.on('match:end', () => portal.showInterstitial());
 /**
  * Bank on pause as well as on leaving. Without this an unlock earned during a
  * session would not appear until the player closed the tab and came back, so the
