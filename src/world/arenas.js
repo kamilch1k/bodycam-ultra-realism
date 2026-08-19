@@ -271,6 +271,76 @@ function ramp(x, z, width, dir, steps, mat, sign = 1, rise = 0.35, tread = 1.6) 
   return out;
 }
 
+/**
+ * DRESSING KITS — small clusters of boxes that read as one object.
+ *
+ * A map made of single boxes reads as a greybox no matter how well it plays,
+ * because real objects are never one volume: an air handler is a body, a louvre
+ * band and a cap, and it is the BAND that tells you what it is. These emit three
+ * or four rows each and are the cheapest way to buy that read.
+ *
+ * Every child is CONCENTRIC with its parent so `rot` can be passed straight
+ * through — an offset child would need the offset rotated too, and that is a
+ * transform stack this format deliberately does not have.
+ */
+
+/** Rooftop air handler. The one prop that says "roof" rather than "floor". */
+function hvac(x, z, w, d, h, rot = 0) {
+  return [
+    [x, z, w, d, h, rot, 'steel', 0],
+    // Louvre band, proud of the body so it catches its own shadow line.
+    [x, z, w * 1.04, d * 1.04, h * 0.3, rot, 'metal_dark', h * 0.42],
+    // Cap plate, overhanging — an overhang is what makes a lid look like a lid.
+    [x, z, w * 1.12, d * 1.12, 0.12, rot, 'metal_dark', h],
+  ];
+}
+
+/**
+ * Planter. Chest-high rims are cover; these are 0.55 so they are furniture the
+ * player can see over and vault, and the foliage above is visual only.
+ */
+function planter(x, z, w, d, rot = 0) {
+  return [
+    [x, z, w, d, 0.55, rot, 'neon_white', 0],
+    [x, z, w * 0.86, d * 0.86, 0.75, rot, 'foliage', 0.5],
+  ];
+}
+
+/**
+ * Pergola — four posts and a slatted lid. Shade structures do a lot of work:
+ * they frame a space as designed, and the slats break the sun into stripes,
+ * which is the strongest "this is a built place" cue available for free.
+ *
+ * Not rotatable: the posts are offset from centre, so `rot` would need the
+ * offsets rotated with it. No caller needs it, so it does not exist.
+ */
+function pergola(x, z, w, d, h = 2.6, slats = 5) {
+  const hx = w / 2 - 0.2;
+  const hz = d / 2 - 0.2;
+  const out = [
+    [x - hx, z - hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
+    [x + hx, z - hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
+    [x - hx, z + hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
+    [x + hx, z + hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
+    // beams along the long edges, tying the posts together
+    [x, z - hz, w, 0.3, 0.28, 0, 'wood_pale', h],
+    [x, z + hz, w, 0.3, 0.28, 0, 'wood_pale', h],
+  ];
+  for (let i = 0; i < slats; i++) {
+    const t = (i + 0.5) / slats - 0.5;
+    out.push([x + t * w, z, 0.22, d, 0.18, 0, 'wood_pale', h + 0.1]);
+  }
+  return out;
+}
+
+/** Parasol: post plus canopy. Reads as a pool deck from anywhere on the map. */
+function parasol(x, z) {
+  return [
+    [x, z, 0.18, 0.18, 2.3, 0, 'wood_pale', 0],
+    [x, z, 3.2, 3.2, 0.16, 0, 'fabric_cream', 2.3],
+  ];
+}
+
 /* ────────────────────────────────────────────────────────────────────────── *
  *  MIAMI — the rooftop.
  *
@@ -318,11 +388,26 @@ const MIAMI = [
   [-18, -10, 2.2, 0.8, 0.5, 0, 'neon_pink', 0],
   [-24, -10, 2.2, 0.8, 0.5, 0, 'neon_pink', 0],
 
-  // ---- helipad, south-east. Raised terrace, ramped from two sides.
+  /**
+   * ---- helipad, south-east. Raised terrace, ramped from two sides.
+   *
+   * BOTH RAMPS USED TO BE BURIED IN THE TERRACE THEY CLIMB. The pad spans
+   * z -27..-9 and x 7..25 at 1.05, and the ramps started at its edge and stepped
+   * INWARDS — so two of each ramp's three steps were inside a solid 1.05 box and
+   * only the first 0.35 step was ever reachable. What the player and the nav grid
+   * actually met was a 0.70 face, exactly MOVE.mantle.autoVaultMax, so the pad
+   * connected or did not depending on which way a sample rounded. tools/nav-check
+   * had 2-3 of its 16 ring points fail here, always on this arc.
+   *
+   * Both now step UP TO the pad edge across open deck: the top tread's far side
+   * lands exactly on the boundary (z -9, x 7), so the run is contiguous with no
+   * lip and no gap. Move these and you must re-derive both, or the pad silently
+   * becomes an island again.
+   */
   [16, -18, 18, 18, 1.05, 0, 'neon_white', 0],
   [16, -18, 11, 11, 0.06, 0, 'neon_white', 1.05],
-  ...ramp(16, -8, 6, 'z', 3, 'neon_purple', -1),
-  ...ramp(6, -18, 6, 'x', 3, 'neon_purple', 1),
+  ...ramp(16, -4.2, 6, 'z', 3, 'neon_purple', -1),
+  ...ramp(2.2, -18, 6, 'x', 3, 'neon_purple', 1),
 
   // ---- plant and cover on the open deck
   [-6, 2, 3.2, 2.2, 2.1, 0, 'neon_purple', 0], // stair housing
@@ -357,6 +442,75 @@ const MIAMI = [
   // helipad perimeter lights
   [16, -26.6, 16, 0.3, 0.12, 0, 'lamp_lens', 1.05],
   [16, -9.4, 16, 0.3, 0.12, 0, 'lamp_lens', 1.05],
+
+  /**
+   * PARAPET COPING. A 0.6 m slab ending in mid-air reads as a cut, not an edge;
+   * a cap that overhangs it by 0.1 each side gives the roof a finished line all
+   * the way round. Four boxes for the single biggest silhouette improvement
+   * available, because the parapet is in frame from everywhere on the map.
+   */
+  [0, -33, 66, 0.8, 0.12, 0, 'steel', 1.15],
+  [0, 33, 66, 0.8, 0.12, 0, 'steel', 1.15],
+  [-33, 0, 0.8, 66, 0.12, 0, 'steel', 1.15],
+  [33, 0, 0.8, 66, 0.12, 0, 'steel', 1.15],
+
+  /**
+   * PLANT ROOM, north-east. Every roof is reached from inside the building, and
+   * the stair bulkhead is what makes that legible. It also breaks the long
+   * sightline down the east flank, which was the one lane on this map with no
+   * cover in it at all.
+   */
+  [22, 20, 4.6, 4.2, 2.6, 0, 'neon_white', 0],
+  [22, 17.85, 2.2, 0.3, 2.1, 0, 'neon_orange', 0], // door
+  [22, 20, 5.0, 4.6, 0.14, 0, 'metal_dark', 2.6], // capping
+
+  // ---- machinery yard behind it: the working half of a luxury roof
+  ...hvac(28, 26, 4.4, 3.2, 1.9, 0.18),
+  ...hvac(22, 27.5, 3.2, 2.6, 1.4),
+  ...hvac(29.5, 18, 2.8, 3.6, 1.6, -0.25),
+  // duct run tying the plant room to the units — chest-high, so it is cover
+  [25.4, 22.5, 5.6, 0.9, 1.1, 0, 'steel', 0],
+  // water tank on legs. The tallest thing up here and the map's landmark:
+  // wherever you are, this tells you which way north-east is.
+  [30, 30.5, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [26.6, 30.5, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [30, 27.4, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [26.6, 27.4, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [28.3, 29, 4.6, 4.4, 2.3, 0, 'metal_dark', 1.7],
+  [28.3, 29, 4.9, 4.7, 0.16, 0, 'steel', 4.0],
+  // antenna mast, south of the tank
+  [31, 13, 0.24, 0.24, 5.4, 0, 'steel', 0],
+  [31, 13, 1.4, 0.16, 0.14, 0, 'steel', 4.3],
+
+  /**
+   * PLANTING along the penthouse frontage. Placed BETWEEN the two doors
+   * (x = -7 and x = +7, 2.4 m wide) and outboard of them, so the approach into
+   * the penthouse is untouched and the frontage stops being a flat white wall.
+   */
+  ...planter(-11.5, 10.6, 3.4, 1.3),
+  ...planter(0, 10.6, 4.6, 1.3),
+  ...planter(11.5, 10.6, 3.4, 1.3),
+  ...planter(-29, 9, 1.3, 5.2),
+  ...planter(-29, 20, 1.3, 5.2),
+  ...planter(29, -2, 1.3, 4.6),
+
+  /**
+   * POOL DECK. A timber pad zones the wet end of the roof away from the plaster
+   * — a floor that changes material is the difference between rooms and one
+   * continuous plane. 0.05 tall, so it is a surface and never a step.
+   */
+  [-22, -9.6, 18, 4.2, 0.05, 0, 'wood_pale', 0],
+  [-11.6, -20, 4.2, 18, 0.05, 0, 'wood_pale', 0],
+  ...parasol(-17.5, -9.6),
+  ...parasol(-26.5, -9.6),
+
+  /**
+   * EAST LOUNGE. The east deck was empty floor between the helipad and the
+   * penthouse; a pergola gives it a reason to exist and gives the player
+   * something to fight around on the way between the two.
+   */
+  ...pergola(25, 4, 10, 8),
+  [25, 4, 5.2, 0.9, 1.05, 0, 'neon_orange', 0], // bar counter, chest-high cover
 ];
 
 /** Player on the open deck at ground level — a spawn must be walkable ground. */
