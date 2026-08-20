@@ -349,21 +349,44 @@ function parasol(x, z) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── *
- *  MIAMI — the rooftop.
+ *  MIAMI — "SKYLINE". A DUST2 LAYOUT, BUILT ON A ROOF.
  *
- *  A skyscraper roof rather than its interior, and that is a NAVIGATION
- *  decision as much as an aesthetic one. The nav grid is a single 2-D height
- *  field, so two floors stacked over the same footprint give an agent two
- *  walkable surfaces at one x/z and pathing picks whichever it sampled. Real
- *  floors would need a second grid, which is a rewrite, not a map.
+ *  This used to be a square arena with furniture in it: one open deck, props
+ *  scattered around, and every fight the same fight because there was only ever
+ *  one space. The shape below is borrowed wholesale from the oldest competitive
+ *  grammar there is, because that grammar solves the problem — it turns a square
+ *  into a set of NAMED PLACES joined by chokes, and a player who can say where
+ *  they are can plan, retreat and come back around.
  *
- *  So the "floors" are TERRACES: sun deck, pool deck and helipad sit at
- *  different heights but never overlap in plan, every one reached by a stepped
- *  ramp. The player gets verticality, sightlines and drops; the grid stays a
- *  function of x and z; and no ghoul stands under a floor it cannot leave.
+ *      z=+33  ┌──────────────┬───────────────┬──────────────┐
+ *             │   B SITE     │   PENTHOUSE   │   A SITE     │
+ *             │  (helipad)   │   (4 doors)   │  (garden)    │
+ *      z=+18  ├──────────────┴──┬─────────┬──┴──────────────┤
+ *             │                 │         │                 │
+ *             │     TUNNEL      │   MID   │      LONG       │
+ *             │                 │  (pool) │                 │
+ *      z=-20  ├─────────────────┴─────────┴─────────────────┤
+ *             │              SOUTH DECK  (spawn)            │
+ *      z=-33  └─────────────────────────────────────────────┘
+ *             x=-33                                      x=+33
  *
- *  Pastel plaster, teal water and a lot of glass — the palette is doing the
- *  Miami, since downloading textures would cost the single-file build.
+ *  THREE ROUTES NORTH out of the spawn deck, two cross-connections between them
+ *  (the spine doors), and the penthouse joining the two sites at the top. That
+ *  is a LOOP, and a loop is the whole point in a horde mode: every space has at
+ *  least two exits, so being chased is a navigation problem rather than a death
+ *  sentence, and you can always break line of sight by rounding a corner instead
+ *  of by finding the one correct door.
+ *
+ *  STILL TERRACES, NEVER STACKED FLOORS. The nav grid is a single 2-D height
+ *  field: two surfaces over one x/z give an agent a choice it cannot express,
+ *  and pathing takes whichever it sampled. So the helipad and the garden are
+ *  raised and RAMPED, and nothing is ever underneath anything. A 1.05 m face
+ *  with no ramp is not a ledge, it is an ISLAND — the flood fill in
+ *  tools/nav-check.mjs is what catches that.
+ *
+ *  Palette is the one this roof already had. A material that is new TO THIS MAP
+ *  costs shader programs at boot and its own draw batch every frame, so the
+ *  whole layout is built from the twelve already here.
  * ────────────────────────────────────────────────────────────────────────── */
 const MIAMI = [
   // Roof edge. Waist high so it reads as a parapet and still blocks a fall.
@@ -371,163 +394,186 @@ const MIAMI = [
   ...wall('x', 33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
   ...wall('z', -33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
   ...wall('z', 33, -33, 33, 1.15, [], 0.6, 'neon_white', 0),
-
-  // ---- penthouse, north. Two doors, so it is a route and not a trap.
-  ...wall('x', 13, -13, 13, 3.4, [-7, 7], WALL_T, 'neon_white', 0),
-  ...wall('x', 29, -13, 13, 3.4, [], WALL_T, 'neon_white', 0),
-  ...wall('z', -13, 13, 29, 3.4, [21], WALL_T, 'neon_white', 0),
-  ...wall('z', 13, 13, 29, 3.4, [21], WALL_T, 'neon_white', 0),
-  // glass frontage either side of the south doors
-  [-10.5, 13, 3.6, 0.25, 2.6, 0, 'glass', 0.4],
-  [10.5, 13, 3.6, 0.25, 2.6, 0, 'glass', 0.4],
-  // bar counter and seating inside — chest-high cover
-  [-4, 22, 7, 0.9, 1.05, 0, 'neon_orange', 0],
-  [5, 20, 0.9, 5, 1.05, 0, 'neon_orange', 0],
-
-  // ---- pool deck, west. A sunken basin is not possible on a flat floor plane,
-  // so the water is a rim you vault and a teal pad you stand in.
-  ...wall('x', -12, -30, -14, 0.7, [], 0.5, 'neon_pink', 0),
-  ...wall('x', -28, -30, -14, 0.7, [], 0.5, 'neon_pink', 0),
-  ...wall('z', -30, -28, -12, 0.7, [], 0.5, 'neon_pink', 0),
-  ...wall('z', -14, -28, -12, 0.7, [], 0.5, 'neon_pink', 0),
-  [-22, -20, 15.4, 7.4, 0.08, 0, 'neon_teal', 0],
-  // loungers
-  [-18, -10, 2.2, 0.8, 0.5, 0, 'neon_pink', 0],
-  [-24, -10, 2.2, 0.8, 0.5, 0, 'neon_pink', 0],
-
-  /**
-   * ---- helipad, south-east. Raised terrace, ramped from two sides.
-   *
-   * BOTH RAMPS USED TO BE BURIED IN THE TERRACE THEY CLIMB. The pad spans
-   * z -27..-9 and x 7..25 at 1.05, and the ramps started at its edge and stepped
-   * INWARDS — so two of each ramp's three steps were inside a solid 1.05 box and
-   * only the first 0.35 step was ever reachable. What the player and the nav grid
-   * actually met was a 0.70 face, exactly MOVE.mantle.autoVaultMax, so the pad
-   * connected or did not depending on which way a sample rounded. tools/nav-check
-   * had 2-3 of its 16 ring points fail here, always on this arc.
-   *
-   * Both now step UP TO the pad edge across open deck: the top tread's far side
-   * lands exactly on the boundary (z -9, x 7), so the run is contiguous with no
-   * lip and no gap. Move these and you must re-derive both, or the pad silently
-   * becomes an island again.
-   */
-  [16, -18, 18, 18, 1.05, 0, 'neon_white', 0],
-  [16, -18, 11, 11, 0.06, 0, 'neon_white', 1.05],
-  ...ramp(16, -4.2, 6, 'z', 3, 'neon_purple', -1),
-  ...ramp(2.2, -18, 6, 'x', 3, 'neon_purple', 1),
-
-  // ---- plant and cover on the open deck
-  [-6, 2, 3.2, 2.2, 2.1, 0, 'neon_purple', 0], // stair housing
-  [6, 4, 2.4, 2.4, 1.6, 0, 'neon_cyan', 0], // AC unit
-  [10, 0, 2.4, 2.4, 1.6, 0, 'neon_cyan', 0],
-  [-16, 6, 2.6, 2.6, 2.6, 0, 'steel', 0], // water tank
-  [20, 10, 1.1, 1.1, 1.1, 0.6, 'neon_pink', 0],
-  [24, 4, 1.1, 1.1, 1.1, -0.4, 'neon_cyan', 0],
-  [-24, 14, 1.1, 1.1, 1.1, 0.3, 'neon_cyan', 0],
-  [2, -26, 4.4, 1.1, 1.1, 0, 'neon_white', 0],
-  [-8, -24, 1.1, 4.4, 1.1, 0, 'neon_white', 0],
-  [-20, -30, 3.2, 1.1, 1.1, 0, 'neon_orange', 0],
-
-  /**
-   * NEON. Thin emissive strips laid along the parapet, the pool rim and the
-   * penthouse frontage.
-   *
-   * This is what the map was missing far more than it was missing geometry: at
-   * a low sun everything reads as one warm mass, and a few self-lit lines give
-   * the eye edges to follow and the level an identity. They are 0.12 m tall so
-   * they are decoration rather than cover, and cost four boxes each.
-   */
-  [0, -32.6, 60, 0.3, 0.14, 0, 'window_glow', 1.15],
-  [0, 32.6, 60, 0.3, 0.14, 0, 'window_glow', 1.15],
-  [-32.6, 0, 0.3, 60, 0.14, 0, 'emissive_warm', 1.15],
-  [32.6, 0, 0.3, 60, 0.14, 0, 'emissive_warm', 1.15],
-  // pool rim glow — reads as underwater lighting from above
-  [-22, -13.7, 15.6, 0.28, 0.12, 0, 'window_glow', 0.7],
-  [-22, -30.3, 15.6, 0.28, 0.12, 0, 'window_glow', 0.7],
-  // penthouse sign band above the glass
-  [0, 12.7, 24, 0.25, 0.5, 0, 'emissive_warm', 2.9],
-  // helipad perimeter lights
-  [16, -26.6, 16, 0.3, 0.12, 0, 'lamp_lens', 1.05],
-  [16, -9.4, 16, 0.3, 0.12, 0, 'lamp_lens', 1.05],
-
-  /**
-   * PARAPET COPING. A 0.6 m slab ending in mid-air reads as a cut, not an edge;
-   * a cap that overhangs it by 0.1 each side gives the roof a finished line all
-   * the way round. Four boxes for the single biggest silhouette improvement
-   * available, because the parapet is in frame from everywhere on the map.
-   */
+  // Coping: a 0.6 slab ending in mid-air reads as a cut, not an edge.
   [0, -33, 66, 0.8, 0.12, 0, 'steel', 1.15],
   [0, 33, 66, 0.8, 0.12, 0, 'steel', 1.15],
   [-33, 0, 0.8, 66, 0.12, 0, 'steel', 1.15],
   [33, 0, 0.8, 66, 0.12, 0, 'steel', 1.15],
 
-  /**
-   * PLANT ROOM, north-east. Every roof is reached from inside the building, and
-   * the stair bulkhead is what makes that legible. It also breaks the long
-   * sightline down the east flank, which was the one lane on this map with no
-   * cover in it at all.
+  /* ══ THE SPINES ═══════════════════════════════════════════════════════════
+   * The two long walls that make three lanes out of one deck. Each carries two
+   * doors, so the lanes are CONNECTED rather than parallel — without them this
+   * is three corridors and every round plays out identically in whichever one
+   * the player picked first. 3.0 m so they block sight completely; the parapet
+   * is the only thing on this roof you can shoot over.
    */
-  [22, 20, 4.6, 4.2, 2.6, 0, 'neon_white', 0],
-  [22, 17.85, 2.2, 0.3, 2.1, 0, 'neon_orange', 0], // door
-  [22, 20, 5.0, 4.6, 0.14, 0, 'steel', 2.6], // capping
-
-  // ---- machinery yard behind it: the working half of a luxury roof
-  ...hvac(28, 26, 4.4, 3.2, 1.9, 0.18),
-  ...hvac(22, 27.5, 3.2, 2.6, 1.4),
-  ...hvac(29.5, 18, 2.8, 3.6, 1.6, -0.25),
-  // duct run tying the plant room to the units — chest-high, so it is cover
-  [25.4, 22.5, 5.6, 0.9, 1.1, 0, 'steel', 0],
-  // water tank on legs. The tallest thing up here and the map's landmark:
-  // wherever you are, this tells you which way north-east is.
-  [30, 30.5, 0.3, 0.3, 1.7, 0, 'steel', 0],
-  [26.6, 30.5, 0.3, 0.3, 1.7, 0, 'steel', 0],
-  [30, 27.4, 0.3, 0.3, 1.7, 0, 'steel', 0],
-  [26.6, 27.4, 0.3, 0.3, 1.7, 0, 'steel', 0],
-  [28.3, 29, 4.6, 4.4, 2.3, 0, 'steel', 1.7],
-  [28.3, 29, 4.9, 4.7, 0.16, 0, 'steel', 4.0],
-  // antenna mast, south of the tank
-  [31, 13, 0.24, 0.24, 5.4, 0, 'steel', 0],
-  [31, 13, 1.4, 0.16, 0.14, 0, 'steel', 4.3],
+  ...wall('z', -16, -20, 17, 3.0, [-8, 8], WALL_T, 'neon_white', 0),
+  ...wall('z', 16, -20, 20, 3.0, [-6, 10], WALL_T, 'neon_white', 0),
 
   /**
-   * PLANTING along the penthouse frontage. Placed BETWEEN the two doors
-   * (x = -7 and x = +7, 2.4 m wide) and outboard of them, so the approach into
-   * the penthouse is untouched and the frontage stops being a flat white wall.
+   * MID DOORS. The one choke every route eventually wants, and the reason mid
+   * is a decision rather than a shortcut: two 2.4 m gaps in a 2.6 m wall, so
+   * crossing mid means committing to a gap somebody can already be looking at.
    */
-  ...planter(-11.5, 10.6, 3.4, 1.3),
-  ...planter(0, 10.6, 4.6, 1.3),
-  ...planter(11.5, 10.6, 3.4, 1.3),
-  ...planter(-29, 9, 1.3, 5.2),
-  ...planter(-29, 20, 1.3, 5.2),
-  ...planter(29, -2, 1.3, 4.6),
+  ...wall('x', 2, -16, 16, 2.6, [-6, 6], WALL_T, 'neon_cyan', 0),
 
-  /**
-   * POOL DECK. A timber pad zones the wet end of the roof away from the plaster
-   * — a floor that changes material is the difference between rooms and one
-   * continuous plane. 0.05 tall, so it is a surface and never a step.
+  /* ══ PENTHOUSE ════════════════════════════════════════════════════════════
+   * The A↔B connector, and the only interior on the map. FOUR doors: two south
+   * onto the plaza, one north to the back walkway, one in each flank wall to
+   * the sites. A building with four ways through is a junction; the same
+   * building with one is a trap, and a horde would simply cork it.
    */
-  [-22, -9.6, 18, 4.2, 0.05, 0, 'neon_white', 0],
-  [-11.6, -20, 4.2, 18, 0.05, 0, 'neon_white', 0],
-  ...parasol(-17.5, -9.6),
-  ...parasol(-26.5, -9.6),
+  ...wall('x', 21, -9, 9, 3.4, [-4, 4], WALL_T, 'neon_white', 0),
+  ...wall('x', 30, -9, 9, 3.4, [0], WALL_T, 'neon_white', 0),
+  ...wall('z', -9, 21, 30, 3.4, [26], WALL_T, 'neon_white', 0),
+  ...wall('z', 9, 21, 30, 3.4, [26], WALL_T, 'neon_white', 0),
+  // Glass frontage and the sign band above it — this is the money shot from mid.
+  [0, 20.8, 8, 0.16, 2.6, 0, 'glass', 0],
+  [0, 20.6, 18, 0.25, 0.5, 0, 'emissive_warm', 3.4],
+  // Interior divider: two rooms, offset doors, so the through-shot is broken.
+  ...wall('x', 25.5, -9, 9, 2.6, [-5, 5], WALL_T, 'neon_pink', 0),
 
-  /**
-   * EAST LOUNGE. The east deck was empty floor between the helipad and the
-   * penthouse; a pergola gives it a reason to exist and gives the player
-   * something to fight around on the way between the two.
+  /* ══ B SITE — the helipad ═════════════════════════════════════════════════
+   * Raised 0.7 with two 2-step ramps, south and east, so it is never a
+   * single-entrance box.
+   *
+   * IT WAS 1.05 ON A 3-STEP RAMP AND THAT DID NOT CONNECT. Paths could leave
+   * the pad but never arrive at it, which is the signature of a nav island with
+   * one-way sampling. 0.7 on two steps is the geometry A site already proves
+   * works on this map, so B now mirrors it. If this needs to be taller later,
+   * copy HOLDOUT's keep instead: 0.4 rises, 2 m treads, steps set BACK from the
+   * edge rather than flush against it.
    */
-  ...pergola(25, 4, 10, 8),
-  [25, 4, 5.2, 0.9, 1.05, 0, 'neon_orange', 0], // bar counter, chest-high cover
+  [-22, 27, 16, 8, 0.7, 0, 'neon_purple', 0],
+  ...ramp(-22, 21.4, 6, 'z', 2, 'neon_purple', 1),
+  ...ramp(-10.8, 27, 6, 'x', 2, 'neon_purple', -1),
+  /**
+   * Pad marking and perimeter lights. EVERY ONE OF THESE SITS INSIDE THE PAD,
+   * and that is load-bearing rather than tidy: the first version had a 9-deep
+   * marking on an 8-deep pad and both light strips just beyond its z edges, so
+   * three slabs floated at y=1.05 over open air. The nav grid raycasts DOWN and
+   * takes the first surface, so those cells reported a floor with nothing under
+   * it, right where the ramp meets the pad — and the whole helipad became
+   * unreachable as a path destination while still being walkable to stand on.
+   * Anything placed at a plinth's height must be strictly within its footprint.
+   */
+  [-22, 27, 12, 6, 0.06, 0, 'neon_white', 0.7],
+  [-22, 23.6, 14, 0.3, 0.12, 0, 'lamp_lens', 0.7],
+  [-22, 30.4, 14, 0.3, 0.12, 0, 'lamp_lens', 0.7],
+  // Cover ON the site — a flat site is a shooting gallery for whoever holds it.
+  [-28, 24.5, 3.2, 1.1, 1.1, 0, 'neon_orange', 0.7],
+  [-16.5, 29.5, 1.1, 3.2, 1.1, 0, 'neon_orange', 0.7],
+  ...hvac(-30, 30, 3.2, 2.6, 1.6),
+
+  /* ══ A SITE — the garden ══════════════════════════════════════════════════
+   * The mirror of B and deliberately NOT symmetrical with it: a 0.7 terrace
+   * rather than a 1.05 pad, and cover made of planting rather than machinery,
+   * so the two sites are told apart at a glance from across the roof.
+   */
+  [27, 27, 10, 8, 0.7, 0, 'neon_teal', 0],
+  ...ramp(27, 19.8, 6, 'z', 2, 'neon_teal', 1),
+  ...ramp(20.8, 27, 6, 'x', 2, 'neon_teal', -1),
+  ...planter(27, 31, 9, 1.4),
+  ...planter(31, 24, 1.4, 5),
+  ...pergola(20, 24, 8, 7),
+  [20, 24, 4.6, 0.9, 1.05, 0, 'neon_orange', 0], // bar counter, chest-high cover
+  ...planter(13.5, 30, 1.4, 5),
+
+  /* ══ MID — the pool ═══════════════════════════════════════════════════════
+   * The middle lane is the fastest way anywhere and the most exposed, which is
+   * the trade that makes it interesting. The pool is a hole in the floor you
+   * cannot take cover in, so the cover here is deliberately thin and off-axis.
+   */
+  [-4, -11, 15, 8, 0.05, 0, 'neon_cyan', 0], // water
+  [-4, -6.6, 15.6, 0.28, 0.12, 0, 'window_glow', 0], // rim glow
+  [-4, -15.4, 15.6, 0.28, 0.12, 0, 'window_glow', 0],
+  ...parasol(8, -13),
+  ...parasol(-14, -6),
+  [10, -3, 1.1, 4.4, 1.1, 0, 'neon_orange', 0],
+  [-11, 6, 4.4, 1.1, 1.1, 0, 'neon_orange', 0],
+  [6, 10, 3.2, 1.1, 0.7, 0, 'neon_pink', 0], // vaultable, so mid has a fast line
+  [-6, 14, 3.2, 1.1, 1.1, 0, 'neon_orange', 0],
+  ...planter(0, 18.5, 7, 1.4),
+
+  /* ══ LONG — the east lane ═════════════════════════════════════════════════
+   * Fast, straight and almost 40 m of it, so taking long is a bet that nobody
+   * is already holding A. The machinery is the cover AND the reason a working
+   * roof looks like a working roof.
+   */
+  ...hvac(28, -14, 4.4, 3.2, 1.9, 0.18),
+  ...hvac(21, -22, 3.4, 2.6, 1.5),
+  ...hvac(29, 2, 2.8, 3.6, 1.6, -0.25),
+  [22, -6, 5.6, 0.9, 1.1, 0, 'steel', 0], // duct run across the lane
+  [28, 12, 1.1, 4.4, 1.1, 0, 'neon_orange', 0],
+  [20, 8, 3.2, 1.1, 0.7, 0, 'neon_pink', 0],
+  // Water tank on legs: the map's landmark, visible from mid and both sites.
+  [31, 19, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [27.6, 19, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [31, 16, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [27.6, 16, 0.3, 0.3, 1.7, 0, 'steel', 0],
+  [29.3, 17.5, 4.6, 4.4, 2.3, 0, 'steel', 1.7],
+  [29.3, 17.5, 4.9, 4.7, 0.16, 0, 'steel', 4.0],
+
+  /* ══ TUNNEL — the west lane ═══════════════════════════════════════════════
+   * The slow route: wider than long but broken into three bays by the plant
+   * rooms, so it is blind rather than open. You arrive at B with a wall at your
+   * back, which is what makes it worth the extra seconds.
+   */
+  [-26, -14, 4.6, 4.2, 2.6, 0, 'neon_white', 0], // plant room
+  [-26, -11.85, 2.2, 0.3, 2.1, 0, 'neon_orange', 0], // its door band
+  [-26, -14, 5.0, 4.6, 0.14, 0, 'steel', 2.6],
+  [-21, 1, 4.2, 4.6, 2.6, 0, 'neon_white', 0], // second plant room, offset
+  [-21, 3.35, 2.0, 0.3, 2.1, 0, 'neon_orange', 0],
+  [-21, 1, 4.6, 5.0, 0.14, 0, 'steel', 2.6],
+  ...hvac(-30, 6, 3.0, 3.0, 1.4),
+  [-28, -3, 1.1, 4.4, 1.1, 0, 'neon_orange', 0],
+  [-24, 12, 4.4, 1.1, 1.1, 0, 'neon_orange', 0],
+  [-30, 15, 3.2, 1.1, 0.7, 0, 'neon_pink', 0],
+  ...planter(-19, -19, 1.4, 5),
+
+  /* ══ SOUTH DECK — spawn ═══════════════════════════════════════════════════
+   * Deliberately the emptiest part of the roof: it is where you start and where
+   * you fall back to, and cover here would let a player hold it forever and
+   * never see the rest of the map.
+   */
+  ...planter(-24, -26, 6, 1.4),
+  ...planter(0, -30, 8, 1.4),
+  ...planter(24, -26, 6, 1.4),
+  ...parasol(-8, -25),
+  ...parasol(14, -28),
+  [0, -22, 6, 1.1, 0.7, 0, 'neon_pink', 0],
+
+  /* ══ NEON ═════════════════════════════════════════════════════════════════
+   * Self-lit lines along the parapet and the lane mouths. At a high sun the
+   * whole roof reads as one warm mass; these give the eye edges to follow, and
+   * at 0.12-0.14 m tall they are decoration rather than cover.
+   */
+  [0, -32.6, 60, 0.3, 0.14, 0, 'window_glow', 1.15],
+  [0, 32.6, 60, 0.3, 0.14, 0, 'window_glow', 1.15],
+  [-32.6, 0, 0.3, 60, 0.14, 0, 'emissive_warm', 1.15],
+  [32.6, 0, 0.3, 60, 0.14, 0, 'emissive_warm', 1.15],
+  // Lane mouths, so the three routes are colour-coded from the spawn deck.
+  [-24, -19.6, 16, 0.3, 0.14, 0, 'emissive_warm', 0],
+  [0, -19.6, 12, 0.3, 0.14, 0, 'window_glow', 0],
+  [24, -19.6, 16, 0.3, 0.14, 0, 'lamp_lens', 0],
+  // Mast, south-east corner.
+  [31, -30, 0.24, 0.24, 5.4, 0, 'steel', 0],
+  [31, -30, 1.4, 0.16, 0.14, 0, 'steel', 4.3],
 ];
 
-/** Player on the open deck at ground level — a spawn must be walkable ground. */
+/**
+ * Spread across the three lanes and both sites, never inside a building and
+ * never on a raised pad — a spawn has to be walkable ground, and in horde mode
+ * these are also where the wave comes from, so clustering them would make every
+ * wave arrive from one bearing.
+ */
 const MIAMI_SPAWNS = [
-  [0, -4, 0, 'sun deck'],
-  [-26, 24, -2.2, 'pool stair'],
-  [26, 26, 2.4, 'penthouse east'],
-  [28, -30, 1.2, 'helipad ramp'],
-  [-28, -4, -1.6, 'west edge'],
-  [0, 30, Math.PI, 'penthouse'],
+  [0, -27, 0, 'south deck'],
+  [-25, -8, 0.4, 'tunnel'],
+  [25, -10, -0.4, 'long'],
+  [-22, 19, Math.PI, 'b site ramp'],
+  [24, 20, Math.PI, 'a site'],
+  [0, 15, Math.PI, 'mid north'],
 ];
 
 /* ────────────────────────────────────────────────────────────────────────── *
