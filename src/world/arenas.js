@@ -671,7 +671,238 @@ const ZONE_SPAWNS = [
   [0, 32, Math.PI, 'north gap'],
 ];
 
+/* ────────────────────────────────────────────────────────────────────────── *
+ *  OUTPOST — a walled desert border post. Sand, brick and dust.
+ *
+ *  The third location, and the point of it is CONTRAST. Miami is a neon rooftop
+ *  of open platforms; this is a walled compound at ground level that you fight
+ *  through BUILDINGS rather than across terraces. Different silhouette, different
+ *  palette, different kind of fight — a map list is only worth having if the
+ *  entries do not play the same.
+ *
+ *      z=+33  ┌──────────────┬─────────────────┬──────────────┐
+ *             │   B COURT    │  STATION HOUSE  │   A DOCK     │
+ *             │  (enclosed)  │      2.4        │    1.2       │
+ *      z=+18  ├────┬─────────┴────┬───────┬────┴──────┬───────┤
+ *             │ W  │   WEST HOUSE │  MID  │ EAST HOUSE│  E    │
+ *             │ A  │   (4 doors)  │       │ (4 doors) │  A    │
+ *             │ L  ├──────────────┤ well  ├───────────┤  L    │
+ *      z=-14  │ L  │              │       │           │  L    │
+ *             │ E  │              │       │           │  E    │
+ *      z=-20  ├────┴──────────────┴───────┴───────────┴───────┤
+ *             │            DEPOT YARD  (spawn)                │
+ *      z=-33  └───────────────────────────────────────────────┘
+ *
+ *  THE TWO SITES ARE OPPOSITES, on purpose, so calling one is worth doing:
+ *    A DOCK   a raised loading platform, open, two stairs, no roof. You hold it
+ *             from height and you are visible from everywhere while you do.
+ *    B COURT  a walled yard at ground level, two doors, no sightline in or out.
+ *             You hold it from cover and never see what is coming.
+ *
+ *  Same engine limit as MIAMI: the nav grid is a single 2-D height field, so
+ *  nothing walkable sits above anything walkable. The awnings are 0.3 m strips
+ *  for exactly that reason — a solid roof over a courtyard would make the nav
+ *  grid think the courtyard's floor was the roof.
+ * ────────────────────────────────────────────────────────────────────────── */
+const OUTPOST = [
+  /* ══ COMPOUND WALL ════════════════════════════════════════════════════════
+   * 4 m and solid: this is a walled post, not a rooftop, so the boundary reads
+   * as something built rather than as the edge of the world.
+   */
+  ...wall('x', -33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
+  ...wall('x', 33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
+  ...wall('z', -33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
+  ...wall('z', 33, -33, 33, 4.0, [], 0.7, 'plaster_sand', 0),
+  // Coping course in brick — one band of a second material stops 4 m of flat
+  // sand from reading as a texture-mapped box.
+  [0, -33, 66, 0.9, 0.35, 0, 'brick', 4.0],
+  [0, 33, 66, 0.9, 0.35, 0, 'brick', 4.0],
+  [-33, 0, 0.9, 66, 0.35, 0, 'brick', 4.0],
+  [33, 0, 0.9, 66, 0.35, 0, 'brick', 4.0],
+
+  /* ══ WEST HOUSE ═══════════════════════════════════════════════════════════
+   * Four doors, no two on the same axis, so it is a junction you can be flanked
+   * inside rather than a corridor with a door at each end.
+   */
+  ...wall('x', -14, -24, -10, 3.5, [-17], WALL_T, 'plaster_sand', 0),
+  ...wall('x', 6, -24, -10, 3.5, [-20, -13], WALL_T, 'plaster_sand', 0),
+  ...wall('z', -24, -14, 6, 3.5, [-4], WALL_T, 'brick', 0),
+  ...wall('z', -10, -14, 6, 3.5, [0], WALL_T, 'brick', 0),
+  // internal divider: two rooms, one offset door, no through-shot
+  ...wall('x', -4, -24, -10, 3.0, [-21], WALL_T, 'brick_fine', 0),
+  [-21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', 0],
+  [-12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', 0],
+  [-18, 1, 1.4, 1.4, 0.7, 0.3, 'wood_prop', 0],
+
+  /* ══ EAST HOUSE ═══════════════════════════════════════════════════════════ */
+  ...wall('x', -14, 10, 24, 3.5, [20], WALL_T, 'plaster_sand', 0),
+  ...wall('x', 6, 10, 24, 3.5, [13], WALL_T, 'plaster_sand', 0),
+  ...wall('z', 10, -14, 6, 3.5, [-8, 2], WALL_T, 'brick', 0),
+  ...wall('z', 24, -14, 6, 3.5, [-4], WALL_T, 'brick', 0),
+  ...wall('x', -4, 10, 24, 3.0, [21], WALL_T, 'brick_fine', 0),
+  [21, -11, 2.2, 1.1, 1.0, 0, 'wood_prop', 0],
+  [12.5, 2, 1.1, 2.2, 1.0, 0, 'wood_prop', 0],
+  [18, -8, 1.4, 1.4, 0.7, -0.3, 'wood_prop', 0],
+
+  /* ══ A DOCK — the raised site, north-east ═════════════════════════════════
+   * A concrete loading platform 1.2 up with two stairs and no roof. Height and
+   * exposure in the same package: you shoot down into the approach and anyone
+   * on the station house is looking straight at you.
+   */
+  [24, 25, 18, 14, 1.2, 0, 'concrete', 0],
+  ...steps(24, 13.2, 8, 'z', 3, 'concrete_dark', 1, 0, 0.4, 1.6),
+  ...steps(10.2, 25, 8, 'x', 3, 'concrete_dark', 1, 0, 0.4, 1.6),
+  // dock edge and its hazard stripe
+  [24, 18.2, 18, 0.4, 0.25, 0, 'concrete_dark', 1.2],
+  [24, 18.0, 18, 0.22, 0.1, 0, 'emissive_warm', 1.2],
+  // cargo on the dock: cover, and the 0.7s are climbable onto the 1.4s
+  [19, 23, 2.4, 2.4, 1.0, 0, 'wood_prop', 1.2],
+  [30, 22, 2.4, 2.4, 0.7, 0.2, 'wood_prop', 1.2],
+  [30, 24.4, 2.4, 2.4, 1.4, 0.2, 'wood_prop', 1.2],
+  [22, 30, 4.4, 1.2, 1.0, 0, 'metal_rust', 1.2],
+  // a corrugated canopy on posts — beams only, never a slab
+  [17, 27, 0.35, 0.35, 2.6, 0, 'metal_rust', 1.2],
+  [31, 27, 0.35, 0.35, 2.6, 0, 'metal_rust', 1.2],
+  [24, 27, 15, 0.3, 0.25, 0, 'corrugated', 3.8],
+  [24, 29.4, 15, 0.3, 0.25, 0, 'corrugated', 3.8],
+
+  /* ══ B COURT — the enclosed site, north-west ══════════════════════════════
+   * Ground level, walled on every side, two doors and no line of sight out. The
+   * exact inverse of A: you cannot be shot from the station house in here, and
+   * you cannot see it coming either.
+   */
+  ...wall('x', 18, -33, -13, 3.5, [-28, -19], WALL_T, 'plaster_sand', 0),
+  ...wall('z', -13, 18, 33, 3.5, [26], WALL_T, 'plaster_sand', 0),
+  // a low inner wall, so the yard is two pockets rather than one box
+  [-23, 25, 8, 0.5, 1.1, 0, 'brick', 0],
+  [-29, 21, 2.2, 2.2, 1.0, 0.2, 'wood_prop', 0],
+  [-17, 30, 2.4, 1.2, 1.0, 0, 'wood_prop', 0],
+  [-26, 30, 1.6, 1.6, 0.7, -0.3, 'wood_prop', 0],
+  // well head in the corner, and a palm — the only green on the map
+  [-30, 31, 2.2, 2.2, 0.9, 0, 'brick_fine', 0],
+  [-20.5, 21, 1.6, 1.6, 0.55, 0, 'brick', 0],
+  [-20.5, 21, 1.3, 1.3, 2.6, 0, 'foliage', 0.55],
+  // red awnings over the doors: 0.3 m strips, deliberately not roofs
+  [-28, 17.4, 3.4, 0.3, 0.25, 0, 'fabric_red', 2.8],
+  [-19, 17.4, 3.4, 0.3, 0.25, 0, 'fabric_red', 2.8],
+
+  /* ══ STATION HOUSE — the high ground, north centre ════════════════════════
+   * 2.4 up a six-tread flight straight out of mid, with a brick hut on top that
+   * has a door on three sides. It overlooks A completely and B not at all,
+   * which is the whole reason to take one site over the other.
+   */
+  [0, 27, 26, 12, 2.4, 0, 'concrete', 0],
+  ...steps(0, 12.2, 10, 'z', 6, 'concrete_dark', 1, 0, 0.4, 1.6),
+  ...wall('x', 24, -9, 9, 3.0, [0], WALL_T, 'brick', 2.4),
+  ...wall('x', 31, -9, 9, 3.0, [], WALL_T, 'brick', 2.4),
+  ...wall('z', -9, 24, 31, 3.0, [27], WALL_T, 'brick', 2.4),
+  ...wall('z', 9, 24, 31, 3.0, [27], WALL_T, 'brick', 2.4),
+  // parapet along the south lip: waist high up here, 3.6 m from mid
+  ...wall('x', 21.2, -13, 13, 1.0, [0], 0.4, 'plaster_sand', 2.4),
+  [-11, 23, 2.2, 1.1, 1.0, 0, 'wood_prop', 2.4],
+  [11, 23, 2.2, 1.1, 1.0, 0, 'wood_prop', 2.4],
+  /**
+   * ONE STAIR, ON PURPOSE — and the two flank flights that used to be here were
+   * wrong twice over. `steps()` always RISES along `sign`, so writing them as
+   * "descending off the house" built them upside down: the 0.4 tread landed
+   * against the 2.4 platform and the 2.4 tread sat out in the open, which is a
+   * wall with a step in front of it. The east one also ran straight through
+   * A dock's footprint.
+   *
+   * They are gone rather than fixed. The house is reached from mid, A dock from
+   * its own two stairs, B court from the alley — all of them via the ground, so
+   * holding the high ground means giving it up to rotate. A direct house-to-dock
+   * link would make the strongest position on the map also the best connected.
+   */
+
+  /* ══ MID — the well street ════════════════════════════════════════════════
+   * The fast way to the station stair and the only place both houses overlook.
+   * The well is hard cover you can circle; everything else is waist high.
+   */
+  /**
+   * The well sits OFF the map's centre deliberately. At (0,-2) its 1.32 m head
+   * covered world (0,0), which is the point tools/nav-check.mjs paths its whole
+   * sample ring to — the target was the top of an unclimbable pillar, so 8 of 16
+   * bearings reported "no path" on a map that is fully connected. The check is
+   * worth more than the centimetres.
+   */
+  [-4, 2, 3.6, 3.6, 1.1, 0, 'brick_fine', 0],
+  [-4, 2, 4.0, 4.0, 0.22, 0, 'brick', 1.1],
+  [-6, 8, 2.4, 1.2, 1.0, 0, 'wood_prop', 0],
+  [6, 8, 1.2, 2.4, 1.0, 0, 'wood_prop', 0],
+  [4, -10, 2.2, 2.2, 0.7, 0.25, 'wood_prop', 0],
+  [4, -12.4, 2.2, 2.2, 1.4, 0.25, 'wood_prop', 0],
+  [-5, -8, 4.4, 1.1, 1.0, 0, 'concrete_prop', 0],
+  [0, 12, 6, 1.1, 0.7, 0, 'concrete_prop', 0],
+
+  /* ══ ALLEYS — west and east ═══════════════════════════════════════════════
+   * 9 m between the compound wall and a house, running the length of the map.
+   * Long, blind at both ends, and the only route that never crosses mid.
+   */
+  [-28, -6, 1.2, 4.4, 1.0, 0, 'concrete_prop', 0],
+  [-29, 6, 2.2, 2.2, 0.7, 0.3, 'wood_prop', 0],
+  [-27, 12, 2.4, 1.2, 1.0, 0, 'metal_rust', 0],
+  [28, -6, 1.2, 4.4, 1.0, 0, 'concrete_prop', 0],
+  [29, 6, 2.2, 2.2, 0.7, -0.3, 'wood_prop', 0],
+  [27, 12, 2.4, 1.2, 1.0, 0, 'metal_rust', 0],
+
+  /* ══ DEPOT YARD — spawn ═══════════════════════════════════════════════════
+   * Deliberately thin cover: it is where you start and fall back to, and a yard
+   * you can hold forever is a yard you never leave.
+   */
+  [-16, -24, 2.4, 2.4, 1.0, 0.15, 'wood_prop', 0],
+  [16, -24, 2.4, 2.4, 1.0, -0.15, 'wood_prop', 0],
+  [0, -28, 6, 1.2, 0.7, 0, 'concrete_prop', 0],
+  [-26, -29, 3.2, 1.2, 1.0, 0, 'metal_rust', 0],
+  [26, -29, 3.2, 1.2, 1.0, 0, 'metal_rust', 0],
+  // lane mouths, so the three routes north are legible from spawn
+  [-28, -19.6, 10, 0.3, 0.12, 0, 'emissive_warm', 0],
+  [0, -19.6, 14, 0.3, 0.12, 0, 'lamp_lens', 0],
+  [28, -19.6, 10, 0.3, 0.12, 0, 'emissive_warm', 0],
+
+  /* ══ LAMPS ════════════════════════════════════════════════════════════════ */
+  [-12, -6, 0.3, 0.3, 4.6, 0, 'metal_rust', 0],
+  [-12, -6, 0.8, 0.8, 0.28, 0, 'lamp_lens', 4.6],
+  [12, 10, 0.3, 0.3, 4.6, 0, 'metal_rust', 0],
+  [12, 10, 0.8, 0.8, 0.28, 0, 'lamp_lens', 4.6],
+  [0, 30, 0.3, 0.3, 3.4, 0, 'metal_rust', 2.4],
+  [0, 30, 0.8, 0.8, 0.28, 0, 'lamp_lens', 5.8],
+];
+
+/** Every route and both sites, on open ground and never on a stair. */
+const OUTPOST_SPAWNS = [
+  [0, -27, 0, 'depot yard'],
+  [-29, -4, 0.5, 'west alley'],
+  [29, -4, -0.5, 'east alley'],
+  [0, 4, 0, 'well street'],
+  [-24, 28, Math.PI, 'b court'],
+  [24, 24, Math.PI, 'a dock'],
+];
+
 export const ARENAS = {
+  /**
+   * 15.4 — late afternoon. A desert map wants a low sun: it is what puts a long
+   * shadow off every wall and separates the sand planes from each other. Miami
+   * needs 13.0 for the opposite reason (see the note there) — its palette goes
+   * beige the moment the sun warms up, and this one wants exactly that warmth.
+   */
+  outpost: {
+    walls: OUTPOST,
+    spawns: OUTPOST_SPAWNS,
+    floor: [70, 70],
+    ground: 'road_dust',
+    sky: 15.4,
+    exposure: -0.7,
+    weather: {
+      cloudCoverage: 0.05,
+      cirrusCoverage: 0.16,
+      turbidity: 2.6,
+      horizonMurk: 0.12,
+      /** Dust haze, but nowhere near enough to eat the dome — see MIAMI. */
+      fogDensity: 0.004,
+      groundAlbedo: 0xb08a5c,
+    },
+  },
   strike: { walls: STRIKE, spawns: STRIKE_SPAWNS, floor: [68, 48], ground: 'road_dust' },
   holdout: { walls: HOLDOUT, spawns: HOLDOUT_SPAWNS, floor: [68, 68], ground: 'sand' },
   /**

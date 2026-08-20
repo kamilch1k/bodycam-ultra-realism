@@ -26,6 +26,8 @@ const STRINGS = {
 
     'map.miami': 'Miami',
     'map.miami.blurb': 'A penthouse rooftop under a midday sun — pool deck, bar, helipad terrace.',
+    'map.outpost': 'Outpost',
+    'map.outpost.blurb': 'A walled desert border post. Two houses, a well street, a loading dock.',
     'map.zone': 'The Zone',
     'map.zone.blurb': 'A Soviet industrial yard. Panel block, workshop, substation, roofs you can climb.',
     'map.strike': 'Strike',
@@ -90,6 +92,8 @@ const STRINGS = {
 
     'map.miami': 'Майами',
     'map.miami.blurb': 'Крыша пентхауса под полуденным солнцем: бассейн, бар, вертолётная площадка.',
+    'map.outpost': 'Застава',
+    'map.outpost.blurb': 'Пограничная застава в пустыне: два дома, улица с колодцем, погрузочная площадка.',
     'map.zone': 'Зона',
     'map.zone.blurb': 'Промзона: панельный дом, цех, подстанция и крыши, на которые можно забраться.',
     'map.strike': 'Страйк',

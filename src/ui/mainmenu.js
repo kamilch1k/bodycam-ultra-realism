@@ -42,7 +42,7 @@ import { MENU_BG } from './menubg.js';
  * away from. Shipping them would put the weakest thing in the game one click
  * from the front page. Re-add an entry here when a map has had the pass.
  */
-export const MAPS = [{ id: 'miami' }, { id: 'zone' }];
+export const MAPS = [{ id: 'miami' }, { id: 'outpost' }, { id: 'zone' }];
 
 /**
  * Two modes, one map each, and the map list is now those two maps. Five maps
