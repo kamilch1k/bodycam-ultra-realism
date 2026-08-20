@@ -427,8 +427,17 @@ const MIAMI = [
   ...wall('x', 30, -9, 9, 3.4, [0], WALL_T, 'neon_white', 0),
   ...wall('z', -9, 21, 30, 3.4, [26], WALL_T, 'neon_white', 0),
   ...wall('z', 9, 21, 30, 3.4, [26], WALL_T, 'neon_white', 0),
-  // Glass frontage and the sign band above it — this is the money shot from mid.
-  [0, 20.8, 8, 0.16, 2.6, 0, 'glass', 0],
+  /**
+   * Glass frontage and the sign band above it — the money shot from mid.
+   *
+   * The glass is 5.6 wide, NOT 8, and that is a doorway measurement rather than
+   * a taste decision: the south face's doors are cut at x = +/-2.8..5.2, so an
+   * 8-wide panel centred on 0 reached into both of them and quietly sealed the
+   * penthouse's two front entrances. Everything still pathed -- around the flank
+   * doors -- so it read as a long walk rather than as a wall, which is exactly
+   * the kind of blocked route a floorplan render catches and a playtest does not.
+   */
+  [0, 20.8, 5.6, 0.16, 2.6, 0, 'glass', 0],
   [0, 20.6, 18, 0.25, 0.5, 0, 'emissive_warm', 3.4],
   // Interior divider: two rooms, offset doors, so the through-shot is broken.
   ...wall('x', 25.5, -9, 9, 2.6, [-5, 5], WALL_T, 'neon_pink', 0),
