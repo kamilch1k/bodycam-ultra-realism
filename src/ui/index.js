@@ -7,6 +7,7 @@ import { DamageArcs } from './damage.js';
 import { HealthFx } from './health.js';
 import { AmmoPanel } from './ammo.js';
 import { SurvivorPanel } from './survivor.js';
+import { BodycamOverlay, BODYCAM_CSS } from './bodycam.js';
 import { LevelRoll } from './levelroll.js';
 import { Killfeed } from './killfeed.js';
 import { Compass, MatchBar } from './compass.js';
@@ -93,6 +94,17 @@ export class UiSystem {
     this.matchBar = new MatchBar(this.chromeLayer);
     this.killfeed = new Killfeed(this.chromeLayer);
     this.ammo = new AmmoPanel(this.chromeLayer);
+    /**
+     * The camera's burnt-in overlay, on the chrome layer with everything else
+     * so a capture frame is a clean frame. See bodycam.js.
+     */
+    if (ctx.config.bodycam) {
+      const style = document.createElement('style');
+      style.id = 'ow-bcam-style';
+      style.textContent = BODYCAM_CSS;
+      document.head.appendChild(style);
+      this.bcam = new BodycamOverlay(this.chromeLayer);
+    }
     this.surv = new SurvivorPanel(this.chromeLayer);
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
@@ -544,6 +556,7 @@ export class UiSystem {
       if (ws.reserve !== undefined) s.reserve = ws.reserve;
       if (ws.mags !== undefined) s.mags = ws.mags;
       if (ws.hideCount !== undefined) s.hideCount = !!ws.hideCount;
+      s.magCheck = ws.magCheck ?? null;
       if (ws.magSize !== undefined) s.magSize = ws.magSize;
       if (ws.reloading !== undefined) s.reloading = !!ws.reloading;
       if (ws.reloadProgress !== undefined) s.reloadProgress = ws.reloadProgress;
@@ -626,6 +639,7 @@ export class UiSystem {
     this.arcs.update(dt, rx, rz, fx, fz);
     this.health.update(dt, s);
     this.ammo.update(dt, s);
+    this.bcam?.update(dt);
     this.surv.update(dt, ctx.perks);
     this.levelRoll.update(dt);
     this.killfeed.update(dt);
@@ -743,6 +757,8 @@ export class UiSystem {
     this.arcs.dispose();
     this.health.dispose();
     this.ammo.dispose();
+    this.bcam?.dispose();
+    document.getElementById('ow-bcam-style')?.remove();
     this.surv.dispose();
     this.killfeed.dispose();
     this.compass.dispose();

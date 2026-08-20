@@ -34,6 +34,11 @@ export class CameraRig {
 
     /** Chest-mounted camera (see CAMERA.bodycam). */
     this.mount = ctx.config.bodycam ? C.bodycam : null;
+    /** Trailing offset of the mount behind the aim, radians. */
+    this.swingYaw = 0;
+    this.swingPitch = 0;
+    this.swingRoll = 0;
+    this._prevPitch = 0;
 
     // ---- smoothed stance -------------------------------------------------
     this.eye = 1.66;
@@ -111,6 +116,9 @@ export class CameraRig {
     this.trauma = 0;
     this.strafeRoll = 0;
     this._strafeRollAim = 0;
+    this.swingYaw = 0;
+    this.swingPitch = 0;
+    this.swingRoll = 0;
     this.turnRoll = 0;
     this.slideRoll = 0;
     this.slideBlend = 0;
@@ -234,6 +242,24 @@ export class CameraRig {
     const airTarget = m.grounded ? 0 : clamp(-m.velocity.y * 0.02, -1, 1) * R.air;
     this.airRoll = approach(this.airRoll, airTarget, 0.22, dt);
 
+    // ---- mount swing -----------------------------------------------------
+    // See CAMERA.bodycam.swing: the chest arrives after the head. Built from
+    // the look RATE so the aim itself is never delayed — pitch rate has to be
+    // differenced here because movement only publishes yawRate.
+    if (this.mount) {
+      const W = this.mount.swing;
+      const pitchRate = dt > 1e-5 ? (m.pitch - this._prevPitch) / dt : 0;
+      const to = (cur, target, tau) => approach(cur, clamp(target, -W.max, W.max), tau, dt);
+      // Building the trail is quicker than unwinding it — a spring that
+      // returns as fast as it loads reads as rubber, not as weight.
+      const tauY = Math.abs(m.yawRate) > 0.35 ? W.tau : W.settle;
+      const tauP = Math.abs(pitchRate) > 0.35 ? W.tau : W.settle;
+      this.swingYaw = to(this.swingYaw, -m.yawRate * W.yaw, tauY);
+      this.swingPitch = to(this.swingPitch, -pitchRate * W.pitch, tauP);
+      this.swingRoll = to(this.swingRoll, m.yawRate * W.roll, tauY);
+    }
+    this._prevPitch = m.pitch;
+
     // ---- trauma shake ----------------------------------------------------
     const S = C.shake;
     this.trauma = Math.max(0, this.trauma - S.decay * dt);
@@ -299,14 +325,14 @@ export class CameraRig {
 
     // ---- assemble rotation ----------------------------------------------
     const pitch = clamp(
-      m.pitch + this.recoilPitch.value + this.kickPitch.value + breathPitch +
+      m.pitch + this.swingPitch + this.recoilPitch.value + this.kickPitch.value + breathPitch +
         this.bobPitch + shakePitch + mantlePitch,
       -CAMERA.pitchLimit,
       CAMERA.pitchLimit
     );
-    const yaw = m.yaw + this.recoilYaw.value + this.kickYaw.value + breathYaw + shakeYaw;
+    const yaw = m.yaw + this.swingYaw + this.recoilYaw.value + this.kickYaw.value + breathYaw + shakeYaw;
     const roll =
-      this.strafeRoll + this.turnRoll + this.slideRoll + this.airRoll +
+      this.swingRoll + this.strafeRoll + this.turnRoll + this.slideRoll + this.airRoll +
       this.bobRoll + this.recoilRoll.value + this.kickRoll.value + shakeRoll +
       mantleRoll - m.leanAmount * MOVE.lean.roll;
 

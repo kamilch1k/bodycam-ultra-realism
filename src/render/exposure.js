@@ -137,6 +137,9 @@ export class AutoExposure {
     this.adaptPass = new Pass('ow-adapt', ADAPT, {
       tSrc: { value: null },
       tPrev: { value: null },
+      // x dt, y speed adapting UP (scene got darker), z adapting DOWN.
+      // See `setAdaptSpeed` — the bodycam profile slows both down until the
+      // hunt is visible, which is the point.
       uParams: { value: new THREE.Vector4(0.016, 1.4, 3.2, 0) },
       uLimits: { value: new THREE.Vector4(-4, 16, 1, 1.0) },
     });
@@ -166,6 +169,16 @@ export class AutoExposure {
    * `depthTexture` is the linear-depth gbuffer channel; when supplied the sky
    * is de-weighted out of the meter.
    */
+  /**
+   * A body camera's AGC is slow and it is not trying to be pretty: step out of
+   * a dark room and the street is blown out for the better part of a second
+   * before it pulls down. Those are the numbers that produce that.
+   */
+  setAdaptSpeed(up, down) {
+    this.adaptPass.uniforms.uParams.value.y = up;
+    this.adaptPass.uniforms.uParams.value.z = down;
+  }
+
   update(renderer, sourceTexture, sw, sh, dt, bias, key, depthTexture) {
     const lu = this.logPass.uniforms;
     lu.tSrc.value = sourceTexture;

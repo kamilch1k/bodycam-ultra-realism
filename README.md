@@ -24,7 +24,10 @@ npm run dev          # http://127.0.0.1:5173
 ```
 
 Click the canvas to lock the cursor. WASD move, mouse aim, LMB fire, RMB ADS,
-R reload, Shift sprint, Ctrl crouch, Space jump, Q/E lean, Esc release.
+R reload, **X mag check**, Shift sprint, Ctrl crouch, Space jump, Q/E lean,
+Esc release. There is no round counter: X pulls the magazine and looks at it,
+and answers in brackets — FULL, HALF, LOW — because that is what witness holes
+tell you.
 
 ## What's in it
 

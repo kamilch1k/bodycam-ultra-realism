@@ -1197,7 +1197,10 @@ export class Viewmodel {
      * that signal is noisy shot to shot. Hipfire hides it; through the sights
      * the magnified picture turns it into a visible jitter while turning.
      */
-    const lagScale = lerp(1, 0.2, ads);
+    // A rifle held by a man who is turning is not a rifle bolted to a camera:
+    // it trails, then swings past, then settles. The arcade fork wants that
+    // small enough to shoot through; this one wants to feel the weight of it.
+    const lagScale = lerp(1, 0.2, ads) * (this.ctx.config.bodycam ? 1.75 : 1);
     const av = this._angVel;
     this.lag.step(
       dt,

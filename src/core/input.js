@@ -18,6 +18,8 @@ export const ACTIONS = {
   reload: ['KeyR'],
   use: ['KeyF'],
   melee: ['KeyV'],
+  /** Pull the magazine and look at it — the only ammo readout this game has. */
+  magCheck: ['KeyX'],
   leanLeft: ['KeyQ'],
   leanRight: ['KeyE'],
   swapWeapon: ['Digit1', 'Digit2', 'Tab'],

@@ -194,6 +194,12 @@ export const DEFAULTS = {
 
 export function createConfig(overrides = {}) {
   const cfg = { ...DEFAULTS, ...overrides };
+  /**
+   * A body-worn camera is a wide lens — that is why the footage looks the way
+   * it does, and it is what the barrel distortion in the composite is shaped
+   * for. Explicit `fov` still wins, so ?fov= and the settings menu are unharmed.
+   */
+  if (cfg.bodycam && overrides.fov === undefined) cfg.fov = 92;
   cfg.q = { ...QUALITY_PRESETS[cfg.quality] };
   cfg.setQuality = (name) => {
     if (!QUALITY_PRESETS[name]) throw new Error(`unknown quality preset "${name}"`);

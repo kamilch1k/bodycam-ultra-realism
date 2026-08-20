@@ -154,6 +154,7 @@ export class WeaponSystem {
     // Preallocated HUD snapshot handed to `ui` (see getHudState).
     this._hudState = {
       name: '', mode: 'auto', ammo: 0, reserve: 0, magSize: 0, mags: 0, hideCount: false,
+      magCheck: null,
       reloading: false, reloadProgress: 0, ads: false, spread: 0, firing: false,
     };
   }
@@ -621,6 +622,9 @@ export class WeaponSystem {
     h.ammo = Math.min(a.mag, a.magSize);
     h.reserve = a.reserve;
     h.mags = a.mags;
+    const mcAt = this._magCheckAt ?? -1;
+    const now = this.ctx.time.elapsed;
+    h.magCheck = now >= mcAt && now < mcAt + 2.4 ? this._magCheckText : null;
     // You know how many magazines are on your chest. You do not know what is in
     // the one in the gun.
     h.hideCount = !!this.ctx.config.hardcore;
@@ -842,6 +846,30 @@ export class WeaponSystem {
   inspect() {
     if (this.reloading || this.switching || this.inspecting) return false;
     this.viewmodel.play('inspect');
+    return true;
+  }
+
+  /**
+   * MAG CHECK. With no round counter (see `hideCount`), the only way to know
+   * what you are holding is to pull the magazine and look at it — so this plays
+   * the inspect animation and answers the way witness holes answer: a bracket,
+   * not a number, and only after the animation has had time to get the mag in
+   * front of your face.
+   */
+  magCheck() {
+    if (!this.inspect()) return false;
+    const s = this.state;
+    const frac = (s.mag + (s.chambered ? 1 : 0)) / Math.max(1, s.def.magSize);
+    this._magCheckText =
+      frac <= 0 ? 'EMPTY'
+        : frac < 0.15 ? 'NEARLY EMPTY'
+          : frac < 0.4 ? 'LOW'
+            : frac < 0.7 ? 'HALF'
+              : frac < 0.95 ? 'MOSTLY FULL'
+                : 'FULL';
+    // Reads when the mag is actually up where you can see it, not on the
+    // keypress, and stays up for a couple of seconds after.
+    this._magCheckAt = this.ctx.time.elapsed + 0.55;
     return true;
   }
 
@@ -1158,6 +1186,7 @@ export class WeaponSystem {
       if (input.actionPressed('reload')) this.reload();
       if (input.pressed('KeyB')) this.cycleFireMode();
       if (input.pressed('KeyI')) this.inspect();
+      if (input.actionPressed('magCheck')) this.magCheck();
       if (input.pressed('Digit1')) this.setWeapon('rifle');
       if (input.pressed('Digit2')) this.setWeapon('smg');
       if (input.pressed('Digit3')) this.setWeapon('pistol');

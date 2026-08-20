@@ -104,13 +104,21 @@ export class AmmoPanel {
     // Hardcore: the gun does not tell you what is left in the magazine — only
     // how many magazines are still on your chest. See weapons/index.js.
     const hide = !!s.hideCount;
+    // A mag check answers in brackets, and only for as long as the magazine is
+    // up in front of you.
+    const check = hide ? (s.magCheck ?? null) : null;
+    if (check !== this._lastCheck) {
+      this._lastCheck = check;
+      setText(this.res, check ?? `${Math.max(0, s.mags | 0)} MAG`);
+      setClass(this.root, 'ow-ammo-check', !!check);
+    }
     if (this._lastAmmo !== ammo || this._lastHide !== hide) {
       if (this._lastAmmo >= 0 && ammo < this._lastAmmo) this.punch = 1;
       this._lastAmmo = ammo;
       this._lastHide = hide;
       setText(this.cur, hide ? '—' : ammo);
     }
-    setText(this.res, hide ? `${Math.max(0, s.mags | 0)} MAG` : Math.max(0, s.reserve | 0));
+    if (!check) setText(this.res, hide ? `${Math.max(0, s.mags | 0)} MAG` : Math.max(0, s.reserve | 0));
     this._fitName(String(s.weaponName ?? s.name ?? 'M4A1'));
     setText(this.mode, s.fireMode ?? 'AUTO');
 

@@ -262,6 +262,10 @@ export class RenderSystem {
     // afternoon. Daylight shots meter between -1 and -2.1, so this only ever
     // binds after dark.
     this.exposure.setLimits(-4.3, 20);
+    // The bodycam's automatic gain is slow and ugly on purpose: swinging from a
+    // dark room into daylight should blow the frame out and then visibly pull
+    // it down, the way the footage does. See exposure.js.
+    if (ctx.config.bodycam) this.exposure.setAdaptSpeed(0.85, 1.5);
     this.lut = createGradeLut('default');
     this.composite = createComposite(this.lut);
     this.viewComposite = createViewComposite();

@@ -209,6 +209,26 @@ export const CAMERA = {
     drop: 0.22, // metres below the eye
     bobScale: 2.1,
     stepScale: 1.7,
+    /**
+     * SWING — the thing that reads as "bodycam" before any of the lens work
+     * does. A camera clipped to a chest is mounted on the part of you that
+     * turns LAST: the eyes go first, the head follows, the shoulders arrive
+     * after that. So the frame trails a fast turn and then catches up and
+     * settles, instead of being welded to the aim vector.
+     *
+     * Driven by look RATE, not by look angle, so it costs no input latency —
+     * where you are pointing is still exactly where the mouse put it. The
+     * offset exists only while you are turning and decays to zero when you
+     * stop.
+     */
+    swing: {
+      yaw: 0.055, // radians of trail per rad/s of turn
+      pitch: 0.045,
+      roll: 0.05, // a chest rolls into a turn
+      max: 7 * DEG,
+      tau: 0.085, // trail builds in
+      settle: 0.16, // ...and unwinds slower than it built, so it reads as mass
+    },
   },
 
   step: {
