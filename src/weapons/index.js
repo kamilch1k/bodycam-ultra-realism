@@ -8,6 +8,7 @@ import { buildRifle } from './models/rifle.js';
 import { buildSmg } from './models/smg.js';
 import { buildPistol } from './models/pistol.js';
 import { clamp, clamp01, lerp, damp, DEG } from './mathx.js';
+import { swapMagazine } from './mags.js';
 
 /**
  * WEAPONS — weapon meshes, the first-person viewmodel rig, ADS, recoil, sway,
@@ -151,7 +152,7 @@ export class WeaponSystem {
     };
     // Preallocated HUD snapshot handed to `ui` (see getHudState).
     this._hudState = {
-      name: '', mode: 'auto', ammo: 0, reserve: 0, magSize: 0,
+      name: '', mode: 'auto', ammo: 0, reserve: 0, magSize: 0, mags: 0, hideCount: false,
       reloading: false, reloadProgress: 0, ads: false, spread: 0, firing: false,
     };
   }
@@ -191,6 +192,14 @@ export class WeaponSystem {
         mag: def.magSize,
         chambered: true,
         reserve: def.reserve,
+        /**
+         * Hardcore ammo is tracked PER MAGAZINE, not as a pool of loose rounds.
+         * You carry this many magazines; a reload swaps the whole thing, and the
+         * partial you dropped goes to the back of the pouch with however many
+         * rounds happened to be left in it. `reserve` stays as the sum so the
+         * reload gate and every other consumer keep working.
+         */
+        pouch: Array.from({ length: Math.floor(def.reserve / def.magSize) }, () => def.magSize),
         mode: def.modes[0],
         modeIndex: 0,
       });
@@ -255,6 +264,8 @@ export class WeaponSystem {
       inMag: mag,
       chambered: s.chambered,
       reserve: s.reserve,
+      /** Magazines left in the pouch — the only ammo number a hardcore HUD shows. */
+      mags: s.pouch ? s.pouch.length : Math.ceil(s.reserve / Math.max(1, s.def.magSize)),
       magSize: s.def.magSize,
       total: mag + ch + s.reserve,
       empty: mag + ch === 0,
@@ -313,6 +324,10 @@ export class WeaponSystem {
     // magazine capacity rather than overflowing the pip strip.
     h.ammo = Math.min(a.mag, a.magSize);
     h.reserve = a.reserve;
+    h.mags = a.mags;
+    // You know how many magazines are on your chest. You do not know what is in
+    // the one in the gun.
+    h.hideCount = !!this.ctx.config.hardcore;
     h.magSize = a.magSize;
     h.reloading = this.reloading;
     // 0..1 through the active reload clip; the bar is meaningless otherwise.
@@ -698,6 +713,19 @@ export class WeaponSystem {
   _completeReload(empty) {
     const s = this.state;
     if (!s) return;
+    if (this.ctx.config.hardcore && s.pouch) {
+      // Swap magazines. The one coming out keeps its rounds and goes to the
+      // BACK of the pouch, so the partials come round again later — and when one
+      // does, you find out how short it is by running dry, not by reading a HUD.
+      s.mag = swapMagazine(s.pouch, s.mag, s.def.magSize);
+      if (empty && !s.chambered && s.mag > 0) {
+        s.mag--;
+        s.chambered = true;
+      }
+      s.reserve = s.pouch.reduce((a, b) => a + b, 0);
+      this._shotIndex = 0;
+      return;
+    }
     const want = s.def.magSize - s.mag;
     const take = Math.min(want, s.reserve);
     s.reserve -= take;

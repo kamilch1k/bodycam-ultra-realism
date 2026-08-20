@@ -200,6 +200,17 @@ export const CAMERA = {
    * frequency where it is — take it much lower and it stops reading as an impact
    * and starts reading as a swaying deck.
    */
+  /**
+   * Chest mount. The camera is clipped to a plate carrier, not screwed to the
+   * skull: it sits below eye level and takes the torso's motion raw, without the
+   * vestibular stabilisation a head gets for free.
+   */
+  bodycam: {
+    drop: 0.22, // metres below the eye
+    bobScale: 2.1,
+    stepScale: 1.7,
+  },
+
   step: {
     impulse: 0.16, // m/s injected into the landing spring
     freq: 5.4,

@@ -651,7 +651,8 @@ export class AiSystem {
       if (miss < 1.6) player?.onNearMiss?.(miss); // whip-crack past the ear
       return;
     }
-    const amount = agent.weaponDamage * (miss < 0.16 ? 1.25 : 1);
+    const amount = agent.weaponDamage * (miss < 0.16 ? 1.25 : 1)
+      * (this.ctx.config.lethality ?? 1);
     this._v2.copy(origin);
     // Damage is applied *only* through the event below. `player` listens for
     // `damage:dealt` with itself as the target, so calling applyDamage() here as

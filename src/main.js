@@ -77,6 +77,8 @@ const config = createConfig({
   mag: params.get('mag') ?? null,
   stock: params.get('stock') ?? null,
   optic: params.get('optic') ?? null,
+  bodycam: params.get('bodycam') !== '0',
+  hardcore: params.get('hardcore') !== '0',
   deterministic: capture,
 });
 

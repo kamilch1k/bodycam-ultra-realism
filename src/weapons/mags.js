@@ -18,6 +18,38 @@
 import { Assembly } from './geometry.js';
 import { buildMagazine } from './parts.js';
 
+/**
+ * Hardcore magazine-level ammo. Ammunition is a pouch of magazines, not a pool
+ * of loose rounds: a reload swaps the whole thing and the partial you just
+ * pulled goes to the BACK of the pouch with whatever was left in it, so it
+ * comes round again later and you find out how short it is by running dry.
+ *
+ * Mutates `pouch` and returns the rounds now in the gun.
+ * @param {number[]} pouch    magazines on the chest, front first
+ * @param {number} inMag      rounds in the magazine coming out
+ * @param {number} magSize    capacity of the current magazine well
+ */
+export function swapMagazine(pouch, inMag, magSize) {
+  if (!pouch.length) return inMag;
+  const fresh = Math.min(pouch.shift(), magSize);
+  const keep = Math.min(inMag, magSize);
+  if (keep > 0) pouch.push(keep);
+  return fresh;
+}
+
+/** ponytail: one check, not a suite — the pouch is the only new state here. */
+export function magSelfTest() {
+  const p = [30, 30, 30];
+  let mag = swapMagazine(p, 7, 30); // reload with 7 left
+  console.assert(mag === 30, 'fresh mag is full');
+  console.assert(p.join() === '30,30,7', 'the partial went to the back');
+  mag = swapMagazine(p, 30, 30); // a pointless reload loses nothing
+  console.assert(mag === 30 && p.join() === '30,7,30', 'no rounds invented or lost');
+  console.assert(swapMagazine([], 4, 30) === 4, 'empty pouch keeps what is in the gun');
+  console.assert(swapMagazine([45], 0, 30) === 30, 'a 45 in a 30 well fills the well');
+  return true;
+}
+
 /** Menu order: shortest to longest. */
 export const MAG_ORDER = ['short', 'std', 'ext'];
 

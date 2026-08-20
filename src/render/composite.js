@@ -27,6 +27,9 @@ uniform vec2 uResolution;
 uniform vec4 uLens;      // x chromatic, y vignette, z grainAmount, w time
 uniform vec4 uGrade;     // x bloomStrength, y lutStrength, z sharpen, w lutSize
 uniform vec4 uLook;      // x agx slope, y agx power, z agx sat, w exposureBias
+// Bodycam sensor/lens: x barrel distortion, y/z rolling-shutter skew driven by
+// the yaw/pitch rate, w extra grain in the shadows (sensor gain, not film).
+uniform vec4 uBcam;
 varying vec2 vUv;
 
 vec3 sampleLut( vec3 c ) {
@@ -38,7 +41,24 @@ vec3 sampleLut( vec3 c ) {
 void main() {
   float exposure = texture2D( tExposure, vec2( 0.5 ) ).r * uLook.w;
 
-  vec2 d = vUv - 0.5;
+  // --- bodycam lens ---------------------------------------------------------
+  // A cheap wide-angle barrel plus a rolling-shutter skew: a CMOS sensor reads
+  // top to bottom over ~15 ms, so while you swing, the bottom of the frame is
+  // sampled from a later camera pose than the top. Both are a UV warp on the
+  // scene fetch only — grain and dither stay in device space, which is where
+  // sensor noise actually lives.
+  // ponytail: clamped edges smear rather than going black; a proper fix crops
+  // by the max distortion, add it if the smear reads.
+  vec2 uv = vUv;
+  {
+    vec2 c = vUv - 0.5;
+    c *= 1.0 + uBcam.x * dot( c, c );
+    c.x += uBcam.y * ( vUv.y - 0.5 );
+    c.y += uBcam.z * ( vUv.x - 0.5 );
+    uv = clamp( c + 0.5, 0.0, 1.0 );
+  }
+
+  vec2 d = uv - 0.5;
   float r2 = dot( d, d );
 
   // --- chromatic aberration: sample the scene three times with a radial
@@ -47,19 +67,19 @@ void main() {
   float ca = uLens.x * r2;
   if ( ca > 0.00002 ) {
     vec2 o = d * ca;
-    hdr.r = texture2D( tColor, vUv + o ).r;
-    hdr.g = texture2D( tColor, vUv ).g;
-    hdr.b = texture2D( tColor, vUv - o ).b;
+    hdr.r = texture2D( tColor, uv + o ).r;
+    hdr.g = texture2D( tColor, uv ).g;
+    hdr.b = texture2D( tColor, uv - o ).b;
   } else {
-    hdr = texture2D( tColor, vUv ).rgb;
+    hdr = texture2D( tColor, uv ).rgb;
   }
-  vec3 centre = max( texture2D( tColor, vUv ).rgb, vec3( 0.0 ) );
+  vec3 centre = max( texture2D( tColor, uv ).rgb, vec3( 0.0 ) );
   hdr = max( hdr, vec3( 0.0 ) );
 
-  vec3 n1 = max( texture2D( tColor, vUv + vec2( uTexel.x, 0.0 ) ).rgb, vec3( 0.0 ) );
-  vec3 n2 = max( texture2D( tColor, vUv - vec2( uTexel.x, 0.0 ) ).rgb, vec3( 0.0 ) );
-  vec3 n3 = max( texture2D( tColor, vUv + vec2( 0.0, uTexel.y ) ).rgb, vec3( 0.0 ) );
-  vec3 n4 = max( texture2D( tColor, vUv - vec2( 0.0, uTexel.y ) ).rgb, vec3( 0.0 ) );
+  vec3 n1 = max( texture2D( tColor, uv + vec2( uTexel.x, 0.0 ) ).rgb, vec3( 0.0 ) );
+  vec3 n2 = max( texture2D( tColor, uv - vec2( uTexel.x, 0.0 ) ).rgb, vec3( 0.0 ) );
+  vec3 n3 = max( texture2D( tColor, uv + vec2( 0.0, uTexel.y ) ).rgb, vec3( 0.0 ) );
+  vec3 n4 = max( texture2D( tColor, uv - vec2( 0.0, uTexel.y ) ).rgb, vec3( 0.0 ) );
 
   // --- chroma clean-up in the darks ---------------------------------------
   // A 4-tap CHROMA-only blur, applied only in the bottom three stops and
@@ -113,7 +133,7 @@ void main() {
   // pyramid now only carries what is above display white, so adding it puts
   // light around the sun disc, the glints and the muzzle flash and leaves the
   // rest of the frame exactly where the tone curve put it.
-  vec3 bloom = max( texture2D( tBloom, vUv ).rgb, vec3( 0.0 ) );
+  vec3 bloom = max( texture2D( tBloom, uv ).rgb, vec3( 0.0 ) );
   hdr += bloom * max( uGrade.x, 0.0 );
 
   // --- vignette: cos^4 natural falloff, in LINEAR LIGHT --------------------
@@ -155,6 +175,9 @@ void main() {
     float noise = ( g * 0.65 + g2 * 0.35 );
     float l = owLum( disp );
     float response = uLens.z * ( 0.35 + 0.65 * smoothstep( 0.0, 0.30, l ) );
+    // Film grain quiets down in the darks; a bodycam's does the opposite,
+    // because what you are looking at down there is amplifier gain.
+    response += uBcam.w * ( 1.0 - smoothstep( 0.0, 0.40, l ) );
     disp += noise * response;
   }
 
@@ -342,6 +365,7 @@ export function createComposite(lut) {
     // Together with a contrast pivot below mid-grey it is what put 18% scene
     // grey on code value 153.
     uLook: { value: new THREE.Vector4(1.0, 1.0, 1.08, 1) },
+    uBcam: { value: new THREE.Vector4(0, 0, 0, 0) },
   });
 }
 

@@ -32,6 +32,9 @@ export class CameraRig {
     this.ctx = ctx;
     const C = CAMERA;
 
+    /** Chest-mounted camera (see CAMERA.bodycam). */
+    this.mount = ctx.config.bodycam ? C.bodycam : null;
+
     // ---- smoothed stance -------------------------------------------------
     this.eye = 1.66;
     this.crouchBlend = 0;
@@ -275,10 +278,12 @@ export class CameraRig {
 
     // Lean is applied in world space further down (it comes from the validated
     // capsule probe, not from the bob basis).
-    const lateral = bobX + shakeX;
-    const vertical = bobY + this.dip.value + this.step.value + shakeY + mantleY + breathPos
-      - this.slideBlend * 0.1;
-    const forward = bobZ + this.punch.value + mantleFwd + this.slideBlend * 0.045;
+    const mount = this.mount;
+    const bs = mount ? mount.bobScale : 1;
+    const lateral = bobX * bs + shakeX;
+    const vertical = bobY * bs + this.dip.value + this.step.value * (mount ? mount.stepScale : 1)
+      + shakeY + mantleY + breathPos - this.slideBlend * 0.1;
+    const forward = bobZ * bs + this.punch.value + mantleFwd + this.slideBlend * 0.045;
 
     this.offset.set(0, 0, 0);
     this.offset.addScaledVector(this._right, lateral);
@@ -287,7 +292,8 @@ export class CameraRig {
 
     this.eyePosition.set(
       base.x + m.leanOffsetX + this.offset.x,
-      base.y + this.eye + this.offset.y - Math.abs(m.leanAmount) * MOVE.lean.drop,
+      base.y + this.eye - (mount ? mount.drop : 0) + this.offset.y
+        - Math.abs(m.leanAmount) * MOVE.lean.drop,
       base.z + m.leanOffsetZ + this.offset.z
     );
 

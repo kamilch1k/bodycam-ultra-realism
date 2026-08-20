@@ -164,8 +164,14 @@ export class Health {
     const H = HEALTH;
 
     // ---- regeneration ---------------------------------------------------
+    // Hardcore: there is none. What you are carrying, you carry to the end of
+    // the fight — and since the breathing sway, the heartbeat and the low-health
+    // grade all key off `fraction`, a wound keeps costing you accuracy for as
+    // long as you stay alive with it.
     const since = this.ctx.time.elapsed - this.lastDamageTime;
-    if (!this.dead && this.value < this.max && since > H.regenDelay) {
+    if (this.ctx.config.hardcore) {
+      this.regenerating = false;
+    } else if (!this.dead && this.value < this.max && since > H.regenDelay) {
       this.regenerating = true;
       // Ramp in so the recovery has a shape rather than a step.
       const ramp = clamp01((since - H.regenDelay) / H.regenRamp);

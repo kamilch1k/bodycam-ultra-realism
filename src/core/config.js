@@ -109,6 +109,16 @@ export const DEFAULTS = {
   adsSensScale: 0.65,
   invertY: false,
   exposure: 1.0,
+  /** Bodycam presentation: wide barrel lens, rolling shutter, sensor grain,
+   *  heavy vignette, and a chest-mounted camera. ?bodycam=0 for the A/B. */
+  bodycam: true,
+  /** Hardcore rules: no health regeneration, magazine-level ammo, and rounds
+   *  that kill in one or two hits in BOTH directions. ?hardcore=0 for the A/B. */
+  hardcore: true,
+  /** Global damage multiplier applied at the two hit-resolution sites (player
+   *  -> agent, agent -> player). 33-damage rifle x 2.3 = 76 to the torso, so a
+   *  fight is two rounds, not a magazine. */
+  lethality: 2.3,
   /** Capture mode disables anything nondeterministic so screenshots are stable. */
   deterministic: false,
 };

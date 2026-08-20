@@ -101,12 +101,16 @@ export class AmmoPanel {
     const ammo = Math.max(0, s.ammo | 0);
     const magSize = Math.max(1, s.magSize | 0 || 30);
 
-    if (this._lastAmmo !== ammo) {
+    // Hardcore: the gun does not tell you what is left in the magazine — only
+    // how many magazines are still on your chest. See weapons/index.js.
+    const hide = !!s.hideCount;
+    if (this._lastAmmo !== ammo || this._lastHide !== hide) {
       if (this._lastAmmo >= 0 && ammo < this._lastAmmo) this.punch = 1;
       this._lastAmmo = ammo;
-      setText(this.cur, ammo);
+      this._lastHide = hide;
+      setText(this.cur, hide ? '—' : ammo);
     }
-    setText(this.res, Math.max(0, s.reserve | 0));
+    setText(this.res, hide ? `${Math.max(0, s.mags | 0)} MAG` : Math.max(0, s.reserve | 0));
     this._fitName(String(s.weaponName ?? s.name ?? 'M4A1'));
     setText(this.mode, s.fireMode ?? 'AUTO');
 
@@ -127,7 +131,7 @@ export class AmmoPanel {
     // empties) and the fresh one seats (strip fills to what the gun will
     // actually hold). Drawing a nearly full strip next to RELOADING and a
     // progress bar is a straight contradiction.
-    const pipCount = Math.min(MAX_PIPS, magSize);
+    const pipCount = hide ? 0 : Math.min(MAX_PIPS, magSize);
     if (pipCount !== this._lastPips) {
       this._lastPips = pipCount;
       for (let i = 0; i < MAX_PIPS; i++)

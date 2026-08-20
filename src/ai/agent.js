@@ -936,7 +936,8 @@ export class Agent {
    */
   applyDamage(amount, part, point, dir) {
     if (!this.alive) return;
-    this.health -= amount;
+    // Symmetric with what he can do to you: see config.lethality.
+    this.health -= amount * (this.ctx.config.lethality ?? 1);
     this.alertness = 1;
     this.suppression = Math.min(1.6, this.suppression + 0.35);
     // knowing where it came from

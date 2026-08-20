@@ -396,6 +396,17 @@ export class RenderSystem {
       // behind a tube, not just that the gun moved.
       adsVignette: 0.34,
       grain: 0.010,
+      // ---- bodycam (see composite.js) --------------------------------------
+      // Applied on top of the settings above when config.bodycam is on. A body
+      // camera is a cheap wide-angle sensor strapped to a moving chest: the lens
+      // bends, the CMOS reads out line by line, and the shadows are gain.
+      bcamBarrel: 0.16,
+      bcamShutter: 0.010, // UV skew per rad/s of look rate
+      bcamShutterMax: 0.020,
+      bcamGain: 0.030, // extra grain in the darks
+      bcamVignette: 0.62,
+      bcamChromatic: 0.0038,
+      bcamGrain: 0.020,
       // ---- ADS depth of field (see dof.js) ---------------------------------
       // maxCoc is in pixels at 1080p and is reached well beyond focusMax, so
       // geometry past ~25 m goes visibly soft while the optic — composited after
@@ -904,6 +915,35 @@ export class RenderSystem {
       res.push([out[i * 3] / c, out[i * 3 + 1] / c, out[i * 3 + 2] / c]);
     }
     return { cols, rows, cells: res };
+  }
+
+  /**
+   * The bodycam lens, per frame. The rolling-shutter skew is proportional to how
+   * fast you are turning: a CMOS sensor reads out over ~15 ms, so the bottom of
+   * the frame was sampled from a later pose than the top, and a fast pan leans
+   * the whole image. Measured off the camera's own rotation rather than plumbed
+   * in from the player, so it also skews when a scripted or spectator camera
+   * moves.
+   */
+  _updateBodycam(ctx, out) {
+    const s = this.settings;
+    if (!ctx.config.bodycam) { out.set(0, 0, 0, 0); return; }
+    const cam = ctx.camera;
+    const dt = Math.max(ctx.time.dt ?? 1 / 60, 1e-4);
+    const e = cam.rotation;
+    let dy = e.y - (this._bcamYaw ?? e.y);
+    // shortest way round, so the +-PI seam is not a whip-pan
+    if (dy > Math.PI) dy -= 2 * Math.PI; else if (dy < -Math.PI) dy += 2 * Math.PI;
+    const dp = e.x - (this._bcamPitch ?? e.x);
+    this._bcamYaw = e.y;
+    this._bcamPitch = e.x;
+    const m = s.bcamShutterMax;
+    const clampSkew = (v) => Math.max(-m, Math.min(m, v * s.bcamShutter / dt));
+    // low-pass, or a single dropped frame reads as a jolt
+    const k = Math.min(1, dt * 18);
+    this._bcamSx = (this._bcamSx ?? 0) + (clampSkew(dy) - (this._bcamSx ?? 0)) * k;
+    this._bcamSy = (this._bcamSy ?? 0) + (clampSkew(dp) - (this._bcamSy ?? 0)) * k;
+    out.set(s.bcamBarrel, this._bcamSx, this._bcamSy, s.bcamGain);
   }
 
   _applySettings() {
@@ -1590,8 +1630,13 @@ export class RenderSystem {
     cu.uGrade.value.x = bloomTex ? s.bloomStrength : 0;
     cu.uGrade.value.z = this.taa ? s.sharpen : 0;
     // Vignette closes in with the sight picture.
-    cu.uLens.value.y = s.vignette + (s.adsVignette - s.vignette) * this._adsT;
+    const bcam = ctx.config.bodycam;
+    const vig = bcam ? s.bcamVignette : s.vignette;
+    cu.uLens.value.x = bcam ? s.bcamChromatic : s.chromatic;
+    cu.uLens.value.y = vig + (s.adsVignette - s.vignette) * this._adsT;
+    cu.uLens.value.z = bcam ? s.bcamGrain : s.grain;
     cu.uLens.value.w = ctx.time.elapsed;
+    this._updateBodycam(ctx, cu.uBcam.value);
     cu.uLook.value.w = this.ctx.config.exposure ?? 1;
 
     if (this.debugView) {
