@@ -77,16 +77,6 @@ file ships inside both portal archives, and the same credit belongs in each
 store listing's description.
 
 -------------------------------------------------------------------------------
-3D MODEL — "Animated Zombie" by Quaternius
-Creative Commons Attribution 3.0 Unported (CC BY 3.0)
-https://creativecommons.org/licenses/by/3.0/
-Obtained via poly.pizza
-
-    "Animated Zombie" by Quaternius
-
-  models/zombie.glb
-
--------------------------------------------------------------------------------
-Everything else is still generated at runtime: every texture, mesh, animation
-and sound EFFECT in this game is code rather than an asset file. The music and
-the one model above are the only downloaded content.
+Everything else is generated at runtime: every texture, MESH, animation and
+sound effect in this game is code rather than an asset file. The music above is
+the only downloaded content.

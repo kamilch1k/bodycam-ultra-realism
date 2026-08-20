@@ -47,7 +47,6 @@ import { Agent, STATE } from './agent.js';
 import { Squad } from './squad.js';
 import { GroundShadows } from './grounding.js';
 import { attachBillboard, disposeFaces, prewarmFaces } from './billboard.js';
-import { loadZombieModel, prewarmZombie, disposeZombieModel } from './zombiemodel.js';
 
 export class AiSystem {
   static id = 'ai';
@@ -143,15 +142,6 @@ export class AiSystem {
           `range ${s.min.toFixed(3)}-${s.max.toFixed(3)} sd ${s.sd.toFixed(3)}`
       );
     }
-
-    /**
-     * The downloaded zombie mesh, awaited here so no agent can be constructed
-     * before it resolves — `attachZombie` returning null is a supported
-     * degradation, but having half a wave fall back and half not would read as
-     * a bug. It never rejects; a failed fetch resolves null and every ghoul
-     * keeps the procedural body.
-     */
-    await loadZombieModel();
 
     // Build every shared character geometry during boot. Horde introduces runt,
     // flatty and brute on later waves; leaving `variant()` lazy moved 20-45 ms
@@ -422,10 +412,6 @@ export class AiSystem {
         renderer.render(scene, camera);
         mesh.visible = true;
         scene.remove(flat);
-
-        // The downloaded zombie's material, for the same reason as everything
-        // else in this block: its first link is otherwise paid mid-fight.
-        await prewarmZombie(renderer, scene, camera, rt, admit);
 
         // Grounding quads are hidden until an actor reaches lateUpdate, so a
         // normal scene compile cannot see them. Draw one instance of each map.
@@ -1361,7 +1347,6 @@ export class AiSystem {
     this._variants.clear();
     this.materials?.dispose();
     disposeFaces();
-    disposeZombieModel();
     this.root.parent?.remove(this.root);
   }
 }

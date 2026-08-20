@@ -282,6 +282,13 @@ function ramp(x, z, width, dir, steps, mat, sign = 1, rise = 0.35, tread = 1.6) 
  * Every child is CONCENTRIC with its parent so `rot` can be passed straight
  * through — an offset child would need the offset rotated too, and that is a
  * transform stack this format deliberately does not have.
+ *
+ * THE MATERIAL COUNT IS THE BUDGET, not the box count. Prewarm is rebuilt per
+ * map, so a material that is new TO THIS MAP costs shader programs at boot and
+ * its own draw batch every frame — Miami went 80 -> 90 programs when this kit
+ * first landed with five. It now uses two that were not already on the roof
+ * (`steel`, `foliage`) and borrows `neon_white` for everything else. Reach for
+ * a material already in the map's list before adding one.
  */
 
 /** Rooftop air handler. The one prop that says "roof" rather than "floor". */
@@ -289,9 +296,9 @@ function hvac(x, z, w, d, h, rot = 0) {
   return [
     [x, z, w, d, h, rot, 'steel', 0],
     // Louvre band, proud of the body so it catches its own shadow line.
-    [x, z, w * 1.04, d * 1.04, h * 0.3, rot, 'metal_dark', h * 0.42],
+    [x, z, w * 1.04, d * 1.04, h * 0.3, rot, 'steel', h * 0.42],
     // Cap plate, overhanging — an overhang is what makes a lid look like a lid.
-    [x, z, w * 1.12, d * 1.12, 0.12, rot, 'metal_dark', h],
+    [x, z, w * 1.12, d * 1.12, 0.12, rot, 'steel', h],
   ];
 }
 
@@ -318,17 +325,17 @@ function pergola(x, z, w, d, h = 2.6, slats = 5) {
   const hx = w / 2 - 0.2;
   const hz = d / 2 - 0.2;
   const out = [
-    [x - hx, z - hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
-    [x + hx, z - hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
-    [x - hx, z + hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
-    [x + hx, z + hz, 0.28, 0.28, h, 0, 'wood_pale', 0],
+    [x - hx, z - hz, 0.28, 0.28, h, 0, 'neon_white', 0],
+    [x + hx, z - hz, 0.28, 0.28, h, 0, 'neon_white', 0],
+    [x - hx, z + hz, 0.28, 0.28, h, 0, 'neon_white', 0],
+    [x + hx, z + hz, 0.28, 0.28, h, 0, 'neon_white', 0],
     // beams along the long edges, tying the posts together
-    [x, z - hz, w, 0.3, 0.28, 0, 'wood_pale', h],
-    [x, z + hz, w, 0.3, 0.28, 0, 'wood_pale', h],
+    [x, z - hz, w, 0.3, 0.28, 0, 'neon_white', h],
+    [x, z + hz, w, 0.3, 0.28, 0, 'neon_white', h],
   ];
   for (let i = 0; i < slats; i++) {
     const t = (i + 0.5) / slats - 0.5;
-    out.push([x + t * w, z, 0.22, d, 0.18, 0, 'wood_pale', h + 0.1]);
+    out.push([x + t * w, z, 0.22, d, 0.18, 0, 'neon_white', h + 0.1]);
   }
   return out;
 }
@@ -336,8 +343,8 @@ function pergola(x, z, w, d, h = 2.6, slats = 5) {
 /** Parasol: post plus canopy. Reads as a pool deck from anywhere on the map. */
 function parasol(x, z) {
   return [
-    [x, z, 0.18, 0.18, 2.3, 0, 'wood_pale', 0],
-    [x, z, 3.2, 3.2, 0.16, 0, 'fabric_cream', 2.3],
+    [x, z, 0.18, 0.18, 2.3, 0, 'neon_white', 0],
+    [x, z, 3.2, 3.2, 0.16, 0, 'neon_white', 2.3],
   ];
 }
 
@@ -462,7 +469,7 @@ const MIAMI = [
    */
   [22, 20, 4.6, 4.2, 2.6, 0, 'neon_white', 0],
   [22, 17.85, 2.2, 0.3, 2.1, 0, 'neon_orange', 0], // door
-  [22, 20, 5.0, 4.6, 0.14, 0, 'metal_dark', 2.6], // capping
+  [22, 20, 5.0, 4.6, 0.14, 0, 'steel', 2.6], // capping
 
   // ---- machinery yard behind it: the working half of a luxury roof
   ...hvac(28, 26, 4.4, 3.2, 1.9, 0.18),
@@ -476,7 +483,7 @@ const MIAMI = [
   [26.6, 30.5, 0.3, 0.3, 1.7, 0, 'steel', 0],
   [30, 27.4, 0.3, 0.3, 1.7, 0, 'steel', 0],
   [26.6, 27.4, 0.3, 0.3, 1.7, 0, 'steel', 0],
-  [28.3, 29, 4.6, 4.4, 2.3, 0, 'metal_dark', 1.7],
+  [28.3, 29, 4.6, 4.4, 2.3, 0, 'steel', 1.7],
   [28.3, 29, 4.9, 4.7, 0.16, 0, 'steel', 4.0],
   // antenna mast, south of the tank
   [31, 13, 0.24, 0.24, 5.4, 0, 'steel', 0],
@@ -499,8 +506,8 @@ const MIAMI = [
    * — a floor that changes material is the difference between rooms and one
    * continuous plane. 0.05 tall, so it is a surface and never a step.
    */
-  [-22, -9.6, 18, 4.2, 0.05, 0, 'wood_pale', 0],
-  [-11.6, -20, 4.2, 18, 0.05, 0, 'wood_pale', 0],
+  [-22, -9.6, 18, 4.2, 0.05, 0, 'neon_white', 0],
+  [-11.6, -20, 4.2, 18, 0.05, 0, 'neon_white', 0],
   ...parasol(-17.5, -9.6),
   ...parasol(-26.5, -9.6),
 

@@ -17,7 +17,7 @@ import { AudioSystem } from './audio/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
-import { showMainMenu } from './ui/mainmenu.js';
+import { showMainMenu, showLoading } from './ui/mainmenu.js';
 import { portal } from './core/portal.js';
 import { music } from './audio/music.js';
 import { TouchControls, isTouchDevice } from './core/touch.js';
@@ -223,8 +223,27 @@ if (skipMenu) {
     map: params.get('map') ?? DEFAULTS.map,
     mode: params.get('mode') ?? DEFAULTS.mode,
   };
+  /**
+   * The deep-link path has no menu, so without this it is a BLACK SCREEN for
+   * the whole build — 17 s of nothing on `?map=`, which reads as a hung tab.
+   * `showLoading` existed for exactly this and was never wired to a caller.
+   *
+   * Not shown for `capture`: the harness compares pixels, and an overlay with a
+   * running CSS animation in frame is precisely the nondeterminism baseline.mjs
+   * exists to eliminate.
+   */
+  const load = capture ? null : showLoading(choice.map);
+  // Let the overlay paint before generation takes the main thread; the barber
+  // pole is composited, but its first frame still has to get out of layout.
+  if (load) await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   // Capture, deep links and ?menu=0 retain the deterministic blocking path.
-  built = await buildEngine(choice);
+  try {
+    built = await buildEngine(choice);
+  } finally {
+    // `finally`, so a build that throws does not leave the overlay welded over
+    // the error the player would otherwise see.
+    load?.done();
+  }
 } else {
   const menu = showMainMenu({ map: params.get('map'), mode: params.get('mode') });
 
@@ -264,17 +283,29 @@ if (skipMenu) {
 
   const chosen = await menu.play;
   menu.setBusy(true);
+  /**
+   * Pressing Play used to grey the buttons out and leave the menu sitting there
+   * for the length of the build — `setBusy` sets `aria-busy` and disables the
+   * controls, neither of which a player can see. The barber pole goes over the
+   * top so there is something moving while the main thread is wedged.
+   */
+  const load = showLoading(chosen.map);
   if (!sameChoice(requested, chosen)) schedule(chosen);
 
   // Selection is disabled after Play, but loop defensively in case its click
   // shared a task with an already queued change notification.
-  while (!built || !sameChoice(built.choice, chosen)) {
-    const awaited = pending;
-    const result = await awaited;
-    if (awaited !== pending) continue;
-    if (result?.error) throw result.error;
-    if (result && sameChoice(result.choice, chosen)) built = result;
-    else schedule(chosen);
+  try {
+    while (!built || !sameChoice(built.choice, chosen)) {
+      const awaited = pending;
+      const result = await awaited;
+      if (awaited !== pending) continue;
+      if (result?.error) throw result.error;
+      if (result && sameChoice(result.choice, chosen)) built = result;
+      else schedule(chosen);
+    }
+  } finally {
+    // A build that throws must not leave the barber pole welded over the error.
+    load.done();
   }
 
   stopWatching();

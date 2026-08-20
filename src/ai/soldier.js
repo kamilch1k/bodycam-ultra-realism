@@ -123,16 +123,6 @@ export const VARIANTS = {
     rush: true,
     melee: { range: 2.1, damage: 13, interval: 1.05 },
     /**
-     * The one variant drawn with a downloaded mesh — Quaternius' animated
-     * zombie, CC BY 3.0 (see THIRD-PARTY-NOTICES.txt). The ghoul earns it
-     * because its whole job is to be recognised at a sprint, and authored
-     * shamble/bite clips read as "zombie" from further away than the procedural
-     * body ever did. The tints below still apply to the hidden rig, which is
-     * what the ragdoll falls over as.
-     */
-    model: 'zombie',
-    modelHeight: 1.85,
-    /**
      * LOUD ON PURPOSE. The original tints were desaturated greens and greys so
      * the silhouette read as "a person who is not kitted" — good against the
      * sand of holdout, invisible against Miami's pastels and the Zone's
