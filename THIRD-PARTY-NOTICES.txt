@@ -60,5 +60,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 -------------------------------------------------------------------------------
-No other third-party code, art, audio or fonts are used: every texture, mesh,
-animation and sound in this game is generated procedurally at runtime.
+MUSIC — Eric Matyas, soundimage.org
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+    Music by Eric Matyas
+    www.soundimage.org
+
+  audio/combat.mp3   "Mayhem" (looping edit)
+  audio/rock.mp3     "Rock Drama 2084"
+  audio/night.mp3    "10 Past Midnight" (looping edit)
+
+ATTRIBUTION IS THIS LICENCE'S ONE REQUIREMENT, so it is the one thing that can
+actually be breached. The credit above has to stay reachable by the player: this
+file ships inside both portal archives, and the same credit belongs in each
+store listing's description.
+
+-------------------------------------------------------------------------------
+3D MODEL — "Animated Zombie" by Quaternius
+Creative Commons Attribution 3.0 Unported (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+Obtained via poly.pizza
+
+    "Animated Zombie" by Quaternius
+
+  models/zombie.glb
+
+-------------------------------------------------------------------------------
+Everything else is still generated at runtime: every texture, mesh, animation
+and sound EFFECT in this game is code rather than an asset file. The music and
+the one model above are the only downloaded content.

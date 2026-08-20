@@ -19,6 +19,7 @@ import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
 import { showMainMenu } from './ui/mainmenu.js';
 import { portal } from './core/portal.js';
+import { music } from './audio/music.js';
 import { TouchControls, isTouchDevice } from './core/touch.js';
 import { AimAssist } from './player/assist.js';
 import { setLang } from './core/i18n.js';
@@ -337,11 +338,16 @@ portal.onPause = () => {
   portal._adScale = time.scale;
   time.scale = 0;
   engine.ctx.peek('audio')?.setMasterVolume?.(0);
+  // Music is an <audio> element outside the mixer graph, so master volume does
+  // not reach it and it has to be silenced by hand. Both portals fail a build
+  // whose own audio keeps playing under an ad.
+  music.setMuted(true);
 };
 portal.onResume = () => {
   const time = engine.ctx.time;
   time.scale = portal._adScale ?? 1;
   engine.ctx.peek('audio')?.setMasterVolume?.(1);
+  music.setMuted(false);
   if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
 };
 
@@ -349,6 +355,9 @@ portal.onResume = () => {
 // path a DIFFERENT module instance. Expose the real singleton so the ad path can
 // actually be exercised from the console.
 window.__PORTAL__ = portal;
+// Same reason, and the music element is detached (`new Audio()`), so there is
+// no DOM query that finds it either.
+window.__MUSIC__ = music;
 
 // The menu path sent this immediately after its first paint. A direct/capture
 // path has no interactive front end, so it becomes ready only now.
@@ -372,9 +381,30 @@ engine.events.on('ui:pause', ({ paused }) => {
   if (paused) bank();
 });
 document.addEventListener('visibilitychange', () => {
+  // A backgrounded tab that keeps playing music is the single most common
+  // reason a portal build gets a complaint, and Yandex checks for it.
+  music.setMuted(document.hidden);
   if (document.hidden) portal.gameplayStop();
   else if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
 });
+
+/**
+ * MUSIC IS WIRED BUT OFF BY DEFAULT — opt in with `?music=1`.
+ *
+ * The tracks, the licence plumbing and the ad/visibility muting are all in
+ * place; what is deliberately absent is any path that starts music without
+ * being asked. Turning it on for everyone is a design decision about the game's
+ * feel, and the volume, the per-map choice and whether a player can turn it off
+ * all want settling before a portal build carries it.
+ *
+ * When it is switched on: `engine.start()` is downstream of the Play click on
+ * the menu path and of the first tap on the `?map=` deep-link path (see
+ * armFirstGesture), so autoplay policy is already satisfied at this point.
+ * Capture runs stay silent regardless — the pixel harness compares frames, and
+ * a decode competing with the shutter is the nondeterminism baseline.mjs exists
+ * to remove.
+ */
+if (!capture && params.get('music') === '1') music.play(config.map);
 
 /**
  * CAREER BANKING.

@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { RIG } from './rig.js';
+import { attachZombie } from './zombiemodel.js';
 import { Animator } from './animator.js';
 /**
  * The behaviour SPEC, which is not the same object as `this.def`.
@@ -138,6 +139,19 @@ export class Agent {
         seed: this.id,
         height: def.variant.flatHeight ?? 1.9,
       });
+    }
+
+    /**
+     * Downloaded model, same trade as the billboard above: hide the procedural
+     * body, draw this instead, leave the rig running underneath for physics.
+     *
+     * `attachZombie` returns null when the file has not loaded (or failed to),
+     * and that is a supported outcome rather than an error — the agent simply
+     * keeps the procedural body it already built. Nothing downstream branches.
+     */
+    if (def.variant.model === 'zombie') {
+      this.model = attachZombie(this.group, { height: def.variant.modelHeight ?? 1.85 });
+      if (this.model) this.mesh.visible = false;
     }
 
     /** Physics looks for these when it adopts the skeleton on death. */
@@ -342,6 +356,31 @@ export class Agent {
     this._move(dt);
     this._shoot(dt);
     this._drive(dt);
+    this._driveModel(dt);
+  }
+
+  /**
+   * Drive the downloaded model's clips from the state the rest of the agent
+   * already computed. Nothing here decides anything — it reads `speed` and the
+   * melee timer and picks a clip, so the behaviour tree stays unaware that a
+   * variant might be drawn with bought animation instead of procedural bones.
+   *
+   * Thresholds are in m/s against `rushSpeed`, not absolutes: the flatty runs at
+   * 9.6 and a vanguard walks at 2, and a fraction of the variant's own top speed
+   * is the only comparison that stays right for both.
+   */
+  _driveModel(dt) {
+    const m = this.model;
+    if (!m) return;
+    const top = this.def.variant.rushSpeed ?? 4;
+    if (this._biteT > 0) this._biteT -= dt;
+    // The bite clip owns the body while a swing is actually landing, otherwise a
+    // rusher in contact reads as running on the spot.
+    if (this._biteT > 0) m.play('bite');
+    else if (this.speed > top * 0.55) m.play('run');
+    else if (this.speed > 0.35) m.play('walk');
+    else m.play('idle');
+    m.update(dt);
   }
 
   /* ================================================================== */
@@ -641,6 +680,11 @@ export class Agent {
       if (this.meleeCooldown <= 0) {
         this.meleeCooldown = this.meleeInterval;
         this.ai.onAgentMelee(this, this.meleeDamage);
+        // Bite window for the downloaded model's clip. Set where the swing
+        // actually lands rather than derived from `meleeCooldown`, which only
+        // ticks while in range and would otherwise latch on as soon as a rusher
+        // stepped back out of it.
+        this._biteT = 0.45;
       }
       return;
     }
@@ -1157,6 +1201,17 @@ export class Agent {
     this.state = STATE.DEAD;
     this.wantFire = false;
     this.animator.enabled = false;
+    /**
+     * HAND THE BODY BACK. The ragdoll is solved on the procedural skeleton, so
+     * death is the moment the downloaded model stops being the right thing to
+     * draw: it would stand upright and T-pose while the real body falls over
+     * inside it. Hiding it and un-hiding the mesh the ragdoll actually drives
+     * costs two boolean writes and needs no bone retargeting at all.
+     */
+    if (this.model) {
+      this.model.setVisible(false);
+      this.mesh.visible = true;
+    }
     this.ai.cover?.release(this.id);
     if (this.controller) this.phys.removeCharacter(this.controller);
     this.controller = null;
@@ -1317,6 +1372,14 @@ export class Agent {
     // disposing the Skeleton every cleared wave leaves those GPU textures
     // resident even though all geometry and character materials are shared.
     this.skeleton?.dispose?.();
+    /**
+     * The clone's own AnimationMixer holds cached bindings against this root,
+     * and an uncached mixer keeps the whole cloned hierarchy alive for as long
+     * as it lives — the same class of leak the Skeleton note above describes.
+     * Geometry and materials are borrowed from the shared prototype and are
+     * deliberately NOT freed here.
+     */
+    this.model?.dispose?.();
     this.group.parent?.remove(this.group);
   }
 }

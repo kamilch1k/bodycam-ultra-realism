@@ -8,10 +8,20 @@ npm run build:crazygames
 ```
 
 Each writes `dist-portal/<portal>/` and `dist-portal/<portal>.zip`. The archive
-is **0.48 MB** — one self-contained `index.html` plus the third-party notices.
-Every asset in this game is generated at runtime, so there is no art payload at
-all; both portals' size limits (Yandex 100 MB, CrazyGames 500 MB) are two orders
-of magnitude away.
+is **6.5 MB**: `index.html`, the third-party notices, `audio/` and `models/`.
+Both portals' size limits (Yandex 100 MB, CrazyGames 500 MB) are still a long
+way off.
+
+It used to be 0.48 MB and one self-contained file, because every asset was
+generated at runtime. Three downloaded files now break that — the music
+(CC BY 4.0) and the zombie mesh (CC BY 3.0). Two consequences worth knowing:
+
+  - **The `file://` check in the checklist no longer covers assets.** `fetch()`
+    is blocked on `file://`, so the model 404s when you double-click index.html
+    even though the page itself loads. Serve over http to test for real:
+    `npx vite preview`, or any static server.
+  - **Attribution is now a licence condition, not a courtesy.** See
+    THIRD-PARTY-NOTICES.txt; the credit also belongs in each store listing.
 
 Upload the ZIP. Both portals want `index.html` at the archive root, which is
 what the packager produces.
