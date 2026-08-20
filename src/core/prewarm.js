@@ -39,7 +39,8 @@ const WARM_POSES = [
 ];
 
 /**
- * Force every shader permutation to compile before gameplay starts.
+ * Force every shader permutation to compile, either eagerly during boot or in
+ * paced chunks after the interactive UI is available.
  * Resolves once warm. Never throws — a failed pre-warm must not block boot,
  * it just means the old stutter comes back.
  */
@@ -98,11 +99,11 @@ const SELF_WARMING = new Set(['fx']);
 const RENDER_SHADOW_WARM = false;
 
 /**
- * NOT HERE: an incremental pre-warm that runs after the game is interactive.
+ * PACING IS A LOAD-TIME LEVER, NOT A STUTTER FIX. The `paced` option below can
+ * keep the UI responsive while this work finishes, but an earlier incremental
+ * pre-warm was measured not to fix the remaining gameplay hitch by itself.
  *
- * It was built and measured, and it does not fix the stutter, because the
- * stutter is not a shader compile. Instrumenting the worst frame of a
- * 1200-frame camera sweep on the street map:
+ * Instrumenting the worst frame of a 1200-frame camera sweep on the street map:
  *
  *   frame 239, 801 ms, +2 programs, +6 TEXTURES, +6 GEOMETRIES, at t=1.8 s
  *
@@ -118,15 +119,100 @@ const RENDER_SHADOW_WARM = false;
  * build those resources during init like `world` and `ai` already do for nav.
  */
 
-export async function prewarm(engine, { onProgress = () => {}, transients = false, drawFrames = false } = {}) {
+/**
+ * @param {object} engine
+ * @param {object} [opts]
+ * @param {boolean|object} [opts.paced=false] one coarse driver job per rAF; an
+ *   object may contain `budgetMs` and `signal`
+ * @param {number} [opts.budgetMs=4] best-effort point after which a late rAF is
+ *   skipped rather than starting another non-preemptible driver job
+ * @param {AbortSignal} [opts.signal] cancellation checked between coarse jobs
+ */
+export async function prewarm(engine, {
+  onProgress = () => {},
+  transients = false,
+  drawFrames = false,
+  paced = false,
+  budgetMs = 4,
+  signal,
+} = {}) {
   const t0 = performance.now();
   const render = engine.ctx.peek('render');
   const renderer = render?.renderer;
   if (!renderer) return { ok: false, reason: 'no renderer' };
 
+  // A shader compile/draw cannot be interrupted once it has entered the driver,
+  // so the budget is necessarily best-effort. In paced mode each coarse job is
+  // admitted by a separate rAF; if the callback itself did not arrive until the
+  // frame's budget was already spent, wait for one more frame before starting.
+  // The object form is handy for callers that want to keep all pacing controls
+  // together, while `paced: true, budgetMs, signal` remains the simple API.
+  const paceOpts = paced && typeof paced === 'object' ? paced : null;
+  const isPaced = paced === true || !!paceOpts;
+  const paceSignal = signal ?? paceOpts?.signal;
+  const requestedBudget = paceOpts?.budgetMs ?? budgetMs;
+  const frameBudget = Number.isFinite(Number(requestedBudget))
+    ? Math.max(0, Number(requestedBudget))
+    : 4;
+
+  const abortError = () => {
+    const err = new Error('Shader pre-warm aborted');
+    err.name = 'AbortError';
+    return err;
+  };
+  const checkAbort = () => {
+    if (paceSignal?.aborted) throw abortError();
+  };
+  const waitFrame = () => new Promise((resolve, reject) => {
+    if (paceSignal?.aborted) {
+      reject(abortError());
+      return;
+    }
+    let raf = 0;
+    const onAbort = () => {
+      cancelAnimationFrame(raf);
+      reject(abortError());
+    };
+    raf = requestAnimationFrame((frameTime) => {
+      paceSignal?.removeEventListener?.('abort', onAbort);
+      resolve(frameTime);
+    });
+    paceSignal?.addEventListener?.('abort', onAbort, { once: true });
+  });
+  const beforeJob = isPaced
+    ? async () => {
+      let frameTime = await waitFrame();
+      checkAbort();
+      if (frameBudget > 0 && performance.now() - frameTime >= frameBudget) {
+        frameTime = await waitFrame();
+        checkAbort();
+      }
+      return frameTime;
+    }
+    : null;
+
   const programsBefore = renderer.info.programs?.length ?? 0;
   const cam = engine.camera;
   const saved = { pos: cam.position.clone(), quat: cam.quaternion.clone(), fov: cam.fov };
+
+  /**
+   * Put the scene lights in the exact state RenderSystem submits to Three.
+   *
+   * Boot leaves the fallback sun visible and only the authored point lights
+   * visible. Compiling in that state creates a 3-directional/4-point program
+   * set; WorldSystem then pads to 20 points and creates the same set again;
+   * the first real render finally hides the fallback sun and uses 2/20. Those
+   * first two sets can never be requested by gameplay. Mirror the frame's
+   * ordering before every forward compile so all warmers share the live key.
+   */
+  const warmCamPos = new THREE.Vector3();
+  const normaliseLightPermutation = () => {
+    engine.ctx.peek('world')?._stabiliseLightCount?.(engine.ctx);
+    render._collect?.(engine.scene);
+    render._syncSun?.(cam);
+    cam.getWorldPosition(warmCamPos);
+    render._cullLights?.(warmCamPos);
+  };
 
   // Pre-warm has to be *simulation-transparent*, not just visually transparent.
   // It steps the engine, which advances the clock and the RNG stream; if that
@@ -147,16 +233,86 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
   // 'combat' and a default wall burst; anything else falls through to the same
   // default, so enumerating surface names buys nothing. weapons.debugPose
   // understands 'idle' | 'ads' | 'fire'.
-  const transientStages = [
-    () => engine.ctx.peek('ai')?.debugStage?.('firefight'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('wall'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('explosion'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('muzzle'),
-    () => engine.ctx.peek('fx')?.debugBurst?.('combat'),
-    () => engine.ctx.peek('weapons')?.debugPose?.('fire'),
-    () => engine.ctx.peek('weapons')?.debugPose?.('ads'),
-    () => engine.ctx.peek('ui')?.debugState?.('combat'),
+  /**
+   * Named so the caller can take a SUBSET. Warming all of them is correct and
+   * costs 20-48 s of blocked main thread — the whole reason this pass was off by
+   * default. But only two of them matter for the stutter a player actually
+   * feels, measured with tools/fire-programs.mjs: `muzzle` builds `fx-distort`
+   * and `fx-haze-warp`, `lowhealth` builds `player:lowhealth`. Those three were
+   * the only programs compiling during play, so `'lite'` warms exactly them and
+   * skips the expensive rest.
+   */
+  const transientStages = (() => {
+
+    const fxOff = () => engine.ctx.peek('fx')?.debugBurst?.('none');
+    return [
+    { id: 'ai', run: () => engine.ctx.peek('ai')?.debugStage?.('firefight'),
+      reset: () => engine.ctx.peek('ai')?.debugStage?.('none') },
+    { id: 'wall', run: () => engine.ctx.peek('fx')?.debugBurst?.('wall'), reset: fxOff },
+    { id: 'explosion', run: () => engine.ctx.peek('fx')?.debugBurst?.('explosion'), reset: fxOff },
+    { id: 'muzzle', run: () => engine.ctx.peek('fx')?.debugBurst?.('muzzle'), reset: fxOff },
+    { id: 'combat', run: () => engine.ctx.peek('fx')?.debugBurst?.('combat'), reset: fxOff },
+    /**
+     * `debugPose('idle')` is NOT a neutral reset — it sets `debugMode = 'idle'`,
+     * and WeaponSystem gates firing on `debugMode === null`. Clear the field.
+     */
+    { id: 'fire', run: () => engine.ctx.peek('weapons')?.debugPose?.('fire'),
+      reset: () => { const w = engine.ctx.peek('weapons'); if (w) w.debugMode = null; } },
+    { id: 'ads', run: () => engine.ctx.peek('weapons')?.debugPose?.('ads'),
+      reset: () => { const w = engine.ctx.peek('weapons'); if (w) w.debugMode = null; } },
+    { id: 'ui', run: () => engine.ctx.peek('ui')?.debugState?.('combat'),
+      reset: () => engine.ctx.peek('ui')?.debugState?.('clean') },
+    /**
+     * The low-health pass sets `enabled` from health every frame, so it cannot
+     * be forced on directly — it would be switched straight back off before it
+     * ever rendered. Dropping health through the real accessor is the only way
+     * to make the pass run, and running it is the only way its program is built.
+     */
+    {
+      id: 'lowhealth',
+      run: () => {
+        const h = engine.ctx.peek('player')?.health;
+        if (!h) return;
+        h.__warmPrev = h.value;
+        h.value = h.max * 0.12;
+      },
+      reset: () => {
+        const h = engine.ctx.peek('player')?.health;
+        if (h?.__warmPrev === undefined) return;
+        h.value = h.__warmPrev;
+        delete h.__warmPrev;
+      },
+    },
   ];
+  })();
+
+  /** The cheap subset that covers every program measured compiling in play. */
+  /** Stages that actually executed, so only their resets run. */
+  const ranStages = [];
+
+  /**
+   * `lite` warmed only what a program-count probe caught compiling. That was too
+   * narrow: three creates the program object during compile(), but ANGLE defers
+   * the actual D3D translation to the first real DRAW, and a program that
+   * already exists does not move `info.programs.length`. So the counter reads
+   * zero while the first trigger pull still pays for the translation — which is
+   * exactly the reported "stutters when first starting shooting".
+   *
+   * `play` therefore warms everything that a player triggers in the first
+   * seconds of a fight — the FX bursts, the fire/ADS poses, the combat HUD — and
+   * skips only `ai`, whose staged firefight builds characters and dominates the
+   * cost. Numbers, per tools/warm-cost.mjs, are in the table there.
+   */
+  const SETS = {
+    lite: ['muzzle', 'lowhealth'],
+    play: ['wall', 'explosion', 'muzzle', 'combat', 'fire', 'ads', 'ui', 'lowhealth'],
+    full: transientStages.map((x) => x.id),
+  };
+  const chosenStages = Array.isArray(SETS[transients])
+    ? transientStages.filter((x) => SETS[transients].includes(x.id))
+    : transients
+      ? transientStages
+      : [];
 
   // A RENDER TARGET MUST BE BOUND WHILE COMPILING. three folds `outputColorSpace`
   // and `toneMapping` into the program cache key and reads BOTH off the currently
@@ -189,11 +345,12 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
     }
   };
 
-  const yieldFrame = () => new Promise((r) => requestAnimationFrame(r));
+  const yieldFrame = waitFrame;
 
+  let aborted = false;
   try {
     let step = 0;
-    const totalSteps = WARM_POSES.length * 2 + (transients ? transientStages.length : 0) + 1;
+    const totalSteps = WARM_POSES.length * 2 + chosenStages.length + 1;
     const tick = () => onProgress(Math.min(1, ++step / totalSteps));
 
     // Pass 1: compile the static world from each pose, with the depth/shadow
@@ -202,7 +359,11 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
       cam.position.set(...p.pos);
       cam.lookAt(...p.look);
       cam.updateMatrixWorld(true);
+      normaliseLightPermutation();
+      if (beforeJob) await beforeJob();
+      else checkAbort();
       await compile();
+      checkAbort();
       tick();
       // Drawing real frames here would reach the depth/shadow and post-processing
       // variants too, but engine.step() advances every subsystem's internal state
@@ -210,10 +371,17 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
       // restorable from core. The pixel gate measured up-to-180/255 deltas from it.
       // So this is opt-in and off: compileAsync only, which mutates nothing.
       if (drawFrames) {
-        engine.step();
-        await yieldFrame();
-        engine.step();
-        await yieldFrame();
+        if (isPaced) {
+          await beforeJob();
+          engine.step();
+          await beforeJob();
+          engine.step();
+        } else {
+          engine.step();
+          await yieldFrame();
+          engine.step();
+          await yieldFrame();
+        }
       }
       tick();
     }
@@ -245,6 +413,7 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
     cam.fov = saved.fov;
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld(true);
+    normaliseLightPermutation();
 
     // render goes first, deliberately: it patches every lit material with the
     // CSM/AO/SSR injection, and a program compiled off an UNPATCHED material is
@@ -261,9 +430,26 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
     for (const sys of hooks) {
       const id = sys.constructor?.id ?? '?';
       try {
-        const arg = sys === renderSys ? { post: true, shadow: RENDER_SHADOW_WARM } : engine.ctx;
-        hookResults[id] = (await sys.prewarmMaterials(arg)) ?? { ok: true };
+        if (beforeJob) await beforeJob();
+        else checkAbort();
+        const arg = sys === renderSys
+          ? {
+            post: true,
+            shadow: RENDER_SHADOW_WARM,
+            beforeJob: beforeJob ?? undefined,
+            signal: paceSignal,
+          }
+          : engine.ctx;
+        // The second argument is deliberately optional/backward-compatible.
+        // Hooks that perform several real warm-up draws can use it to admit
+        // each draw on a separate frame; existing one-argument hooks ignore it.
+        hookResults[id] = (await sys.prewarmMaterials(arg, {
+          beforeJob: beforeJob ?? undefined,
+          signal: paceSignal,
+        })) ?? { ok: true };
+        checkAbort();
       } catch (err) {
+        if (err?.name === 'AbortError' || paceSignal?.aborted) throw err;
         // An optional hook must never be able to block boot.
         hookResults[id] = { ok: false, reason: String(err?.message ?? err) };
       }
@@ -272,25 +458,50 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
 
     // Pass 2: spawn each subsystem's transient objects and compile those too.
     // Gated: see the `transients` option doc — this pass is not pixel-transparent.
-    for (const spawn of (transients ? transientStages : [])) {
-      try { spawn(); } catch { /* subsystem may not implement the hook */ }
-      engine.step();
-      await yieldFrame();
-      await compile();
-      engine.step();
-      await yieldFrame();
+    for (const stage of chosenStages) {
+      if (isPaced) {
+        // Staging plus its first draw is one coarse job: the transient only
+        // exists so that this draw can materialise its first-use resources.
+        await beforeJob();
+        ranStages.push(stage);
+        try { stage.run(); } catch { /* subsystem may not implement the hook */ }
+        engine.step();
+        await beforeJob();
+        await compile();
+        checkAbort();
+        await beforeJob();
+        engine.step();
+      } else {
+        ranStages.push(stage);
+        try { stage.run(); } catch { /* subsystem may not implement the hook */ }
+        engine.step();
+        await yieldFrame();
+        await compile();
+        engine.step();
+        await yieldFrame();
+      }
       tick();
     }
     tick();
+  } catch (err) {
+    if (err?.name === 'AbortError' || paceSignal?.aborted) aborted = true;
+    else throw err;
   } finally {
-    // Restore exactly what we found. Any residue here would be a visual change.
-    for (const reset of (transients ? [
-      () => engine.ctx.peek('fx')?.debugBurst?.('none'),
-      () => engine.ctx.peek('weapons')?.debugPose?.('idle'),
-      () => engine.ctx.peek('ui')?.debugState?.('clean'),
-      () => engine.ctx.peek('ai')?.debugStage?.('none'),
-    ] : [])) {
-      try { reset(); } catch { /* optional hook */ }
+    /**
+     * Restore ONLY what was actually staged.
+     *
+     * This used to be a flat list run whenever the pass ran at all, which was
+     * harmless while the pass was all-or-nothing and became a hard bug the
+     * moment a SUBSET could run: `weapons.debugPose('idle')` fired even though
+     * no weapon pose had been staged, and `debugPose` sets `debugMode = 'idle'`
+     * — not null. `live` in WeaponSystem.update is gated on `debugMode === null`,
+     * so shooting and aiming were dead for the whole session.
+     *
+     * Pairing each reset with its own stage makes that unrepresentable: a reset
+     * cannot run for something that never happened.
+     */
+    for (const stage of ranStages) {
+      try { stage.reset?.(); } catch { /* optional hook */ }
     }
     cam.position.copy(saved.pos);
     cam.quaternion.copy(saved.quat);
@@ -311,6 +522,16 @@ export async function prewarm(engine, { onProgress = () => {}, transients = fals
   }
 
   const programsAfter = renderer.info.programs?.length ?? 0;
+  if (aborted) {
+    return {
+      ok: false,
+      aborted: true,
+      ms: Math.round(performance.now() - t0),
+      programsBefore,
+      programsAfter,
+      compiled: programsAfter - programsBefore,
+    };
+  }
   return {
     ok: true,
     hooks: engine.__prewarmHooks,

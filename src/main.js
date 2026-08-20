@@ -1,5 +1,5 @@
 import { Engine } from './core/engine.js';
-import { createConfig } from './core/config.js';
+import { createConfig, DEFAULTS } from './core/config.js';
 
 import { RenderSystem } from './render/index.js';
 import { MaterialSystem } from './materials/index.js';
@@ -10,13 +10,21 @@ import { PlayerSystem } from './player/index.js';
 import { WeaponSystem } from './weapons/index.js';
 import { FxSystem } from './fx/index.js';
 import { AiSystem } from './ai/index.js';
+import { ModeSystem } from './modes/index.js';
+import { PerkSystem } from './game/perks.js';
 import { UiSystem } from './ui/index.js';
 import { AudioSystem } from './audio/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
-import { showMainMenu, showLoading, MAPS } from './ui/mainmenu.js';
+import { showMainMenu, showLoading } from './ui/mainmenu.js';
 import { portal } from './core/portal.js';
+import { music } from './audio/music.js';
+import { TouchControls, isTouchDevice } from './core/touch.js';
+import { AimAssist } from './player/assist.js';
+import { setLang } from './core/i18n.js';
+import { loadCareer, bankSession } from './core/save.js';
+import { armFirstGesture } from './core/fullscreen.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -25,19 +33,169 @@ const capture = params.get('capture') === '1';
 // because tools that measure real frame pacing (tools/perf.mjs) need the loop to
 // free-run. See the long comment in src/dev/shots.js.
 const lockstep = capture && params.get('lockstep') === '1';
+const canvas = document.getElementById('game');
 
 /**
- * FRONT END FIRST, ENGINE SECOND.
+ * FRONT END FIRST, ENGINE BEHIND IT.
  *
- * Nothing 3D is constructed until the player has picked a map. The menu is DOM
- * and paints on the browser's first frame; the 12-25 s of procedural generation
- * and shader translation then happens behind a compositor-animated loading
- * screen instead of behind a black canvas.
+ * The menu is plain DOM and paints before any 3D work starts. Its selected map
+ * then builds and pre-warms while the menu remains usable; changing the map
+ * cancels that warm-up and serially replaces the stopped engine. Play waits for
+ * the matching build, so gameplay never inherits half-warmed resources.
  *
  * The menu is SKIPPED for `?capture=1` (the pixel harness drives boot itself),
  * whenever `?map=` names a level outright (so every tool, probe and deep link
  * still boots straight into the game), and for `?menu=0`.
  */
+const sameChoice = (a, b) => a?.map === b?.map && a?.mode === b?.mode;
+
+function abortError() {
+  const err = new Error('Engine build superseded');
+  err.name = 'AbortError';
+  return err;
+}
+
+function showBootFailure(err) {
+  console.error('[boot] init failed', err);
+  document.body.insertAdjacentHTML(
+    'beforeend',
+    `<pre style="position:fixed;inset:0;padding:2rem;color:#f66;background:#000;
+       font:12px/1.5 ui-monospace,monospace;overflow:auto;z-index:9999;white-space:pre-wrap">
+BOOT FAILURE\n\n${err.stack ?? err.message}</pre>`
+  );
+}
+
+/** Build a fully initialised but STOPPED engine for one menu choice. */
+async function buildEngine(choice, { paced = false, budgetMs = 4, signal } = {}) {
+  const config = createConfig({
+    // This game is desktop only and there is no portal bounce rate to protect,
+    // so it launches at `high` — the `mobile` profile the arcade fork ships is
+    // still there behind ?q=mobile for a like-for-like comparison.
+    quality: params.get('q') ?? 'high',
+    map: choice.map,
+    mode: choice.mode,
+    // ?skin= applies a weapon finish at boot — the only way to review one under
+    // the real sun, since the weapons preview studio backlights every view.
+    skin: params.get('skin') ?? null,
+    // Same reason: an attachment can only be judged in the game's own light.
+    muzzle: params.get('muzzle') ?? null,
+    mag: params.get('mag') ?? null,
+    stock: params.get('stock') ?? null,
+    optic: params.get('optic') ?? null,
+    bodycam: params.get('bodycam') !== '0',
+    hardcore: params.get('hardcore') !== '0',
+    deterministic: capture,
+    // ?glove=full|simple overrides the preset, so the two can be A/B captured
+    // from an identical camera instead of across a rebuild.
+    gloveOverride: params.get('glove') ?? null,
+  });
+
+  const engine = new Engine({ canvas, config });
+  let disposed = false;
+  const disposeOnce = () => {
+    if (disposed) return;
+    disposed = true;
+    try {
+      engine.dispose();
+    } catch (disposeErr) {
+      console.warn('[boot] partial engine cleanup failed:', disposeErr);
+    }
+  };
+
+  try {
+    // Registration order is irrelevant — Registry topo-sorts on static deps.
+    engine
+      .add(RenderSystem)
+      .add(MaterialSystem)
+      .add(SkySystem)
+      .add(WorldSystem)
+      .add(PhysicsSystem)
+      .add(PlayerSystem)
+      .add(WeaponSystem)
+      .add(FxSystem)
+      .add(AiSystem)
+      .add(UiSystem)
+      .add(ModeSystem)
+      .add(PerkSystem)
+      .add(AudioSystem);
+
+    try {
+      await engine.init();
+    } catch (err) {
+      // A selection change is not a boot failure. init() itself is not
+      // interruptible, so the signal may only be observed once it returns/throws.
+      if (signal?.aborted) throw abortError();
+      showBootFailure(err);
+      throw err;
+    }
+
+    // A stopped engine is built behind the front menu, but init() has already
+    // attached the global mouse/keyboard listeners. Keep them inert until Play:
+    // otherwise a map-card click requests pointer lock, moves the cursor to the
+    // viewport centre and can make the next menu click land on the wrong element.
+    if (paced) {
+      engine.input.enabled = false;
+      engine.input.lockSuppressed = true;
+    }
+
+    if (signal?.aborted) throw abortError();
+
+    // A paced menu build does not own the page yet. installShotApi's free-run
+    // diagnostics schedule a persistent rAF loop and publish globals, so defer
+    // them until this engine is the selected build instead of retaining every
+    // aborted/replaced engine forever.
+    const shotApi = paced ? null : installShotApi(engine, { capture, lockstep });
+
+    /**
+     * Arcade maps pre-warm by default; street keeps its explicit opt-in because
+     * its material set is much larger. The menu path admits one coarse driver job
+     * per animation frame, keeping selection/fullscreen/Play responsive. Direct
+     * links and capture retain the old blocking order for deterministic tooling.
+     */
+    const prewarmParam = params.get('prewarm');
+    const wantPrewarm =
+      prewarmParam === '1' || (prewarmParam !== '0' && config.map !== 'street');
+    const progress = {
+      status: wantPrewarm ? 'running' : 'skipped',
+      progress: 0,
+      map: config.map,
+    };
+    window.__PREWARM__ = progress;
+
+    const warmup = wantPrewarm
+      ? await prewarm(engine, {
+        transients: capture ? false : (params.get('warm') ?? 'play'),
+        paced,
+        budgetMs,
+        signal,
+        onProgress: (value) => {
+          // A later map build owns the global once it starts.
+          if (window.__PREWARM__ === progress) progress.progress = value;
+        },
+      })
+      : { ok: false, reason: `off for map "${config.map}" — ?prewarm=1 to force` };
+
+    Object.assign(progress, warmup, {
+      status: warmup.aborted
+        ? 'aborted'
+        : wantPrewarm
+          ? warmup.ok ? 'done' : 'failed'
+          : 'skipped',
+      progress: warmup.aborted ? progress.progress : 1,
+    });
+    console.info('[boot] prewarm', warmup);
+
+    if (signal?.aborted || warmup.aborted) throw abortError();
+
+    return { choice: { ...choice }, config, engine, shotApi, warmup };
+  } catch (err) {
+    // Until return transfers ownership to the caller, every failure path owns
+    // exactly one cleanup attempt. Cleanup must never replace the real cause.
+    disposeOnce();
+    throw err;
+  }
+}
+
 /**
  * Attach the games-portal SDK before the menu, not after.
  *
@@ -50,128 +208,286 @@ const lockstep = capture && params.get('lockstep') === '1';
  */
 await portal.init();
 
+/**
+ * Language and career must both be settled BEFORE the menu paints: the menu
+ * shows rank and progress, and Yandex requires the language come from the SDK
+ * rather than from a picker. `?lang=` overrides for testing the RU build without
+ * a Russian browser.
+ */
+setLang(params.get('lang') ?? portal.lang);
+await loadCareer();
+
 const skipMenu = capture || params.has('map') || params.get('menu') === '0';
-const choice = skipMenu
-  ? { map: params.get('map') ?? 'street', mode: params.get('mode') ?? 'tdm' }
-  : await showMainMenu({ map: params.get('map'), mode: params.get('mode') });
+let built;
+if (skipMenu) {
+  const choice = {
+    map: params.get('map') ?? DEFAULTS.map,
+    mode: params.get('mode') ?? DEFAULTS.mode,
+  };
+  /**
+   * The deep-link path has no menu, so without this it is a BLACK SCREEN for
+   * the whole build — 17 s of nothing on `?map=`, which reads as a hung tab.
+   * `showLoading` existed for exactly this and was never wired to a caller.
+   *
+   * Not shown for `capture`: the harness compares pixels, and an overlay with a
+   * running CSS animation in frame is precisely the nondeterminism baseline.mjs
+   * exists to eliminate.
+   */
+  const load = capture ? null : showLoading(choice.map);
+  // Let the overlay paint before generation takes the main thread; the barber
+  // pole is composited, but its first frame still has to get out of layout.
+  if (load) await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // Capture, deep links and ?menu=0 retain the deterministic blocking path.
+  try {
+    built = await buildEngine(choice);
+  } finally {
+    // `finally`, so a build that throws does not leave the overlay welded over
+    // the error the player would otherwise see.
+    load?.done();
+  }
+} else {
+  const menu = showMainMenu({ map: params.get('map'), mode: params.get('mode') });
 
-// Put the loading screen up and let it actually paint before anything blocks:
-// engine.init() holds the main thread, so a frame has to land first or the
-// overlay never appears.
-const loading = skipMenu ? null : showLoading(MAPS.find((m) => m.id === choice.map)?.name ?? choice.map);
-if (loading) {
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // Resolve in the second rAF callback: the first callback allows the DOM menu
+  // to paint before procedural generation starts occupying the main thread.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  portal.loaded();
+  console.log(`[boot] menu interactive in ${Math.round(performance.now())} ms`);
+
+  let serial = Promise.resolve(null);
+  let pending = serial;
+  let requested = menu.choice;
+  let controller = null;
+
+  const schedule = (nextChoice) => {
+    const choiceForBuild = { ...nextChoice };
+    requested = choiceForBuild;
+    controller?.abort();
+    controller = new AbortController();
+    const { signal } = controller;
+
+    pending = serial = serial.then(async (previous) => {
+      previous?.engine?.dispose();
+      if (signal.aborted) return null;
+      try {
+        return await buildEngine(choiceForBuild, { paced: true, budgetMs: 4, signal });
+      } catch (err) {
+        if (err?.name === 'AbortError' || signal.aborted) return null;
+        return { choice: choiceForBuild, error: err };
+      }
+    });
+    return pending;
+  };
+
+  const stopWatching = menu.changed(schedule);
+  schedule(requested);
+
+  const chosen = await menu.play;
+  menu.setBusy(true);
+  /**
+   * Pressing Play used to grey the buttons out and leave the menu sitting there
+   * for the length of the build — `setBusy` sets `aria-busy` and disables the
+   * controls, neither of which a player can see. The barber pole goes over the
+   * top so there is something moving while the main thread is wedged.
+   */
+  const load = showLoading(chosen.map);
+  if (!sameChoice(requested, chosen)) schedule(chosen);
+
+  // Selection is disabled after Play, but loop defensively in case its click
+  // shared a task with an already queued change notification.
+  try {
+    while (!built || !sameChoice(built.choice, chosen)) {
+      const awaited = pending;
+      const result = await awaited;
+      if (awaited !== pending) continue;
+      if (result?.error) throw result.error;
+      if (result && sameChoice(result.choice, chosen)) built = result;
+      else schedule(chosen);
+    }
+  } finally {
+    // A build that throws must not leave the barber pole welded over the error.
+    load.done();
+  }
+
+  stopWatching();
+  menu.done();
 }
 
-const config = createConfig({
-  // Keep the launch path friendly to browser portals. Use ?q=ultra when
-  // comparing the full desktop-quality renderer.
-  quality: params.get('q') ?? 'low',
-  map: choice.map,
-  mode: choice.mode,
-  // ?skin= applies a weapon finish at boot — the only way to review one under
-  // the real sun, since the weapons preview studio backlights every view.
-  skin: params.get('skin') ?? null,
-  // Same reason: an attachment can only be judged in the game's own light.
-  muzzle: params.get('muzzle') ?? null,
-  mag: params.get('mag') ?? null,
-  stock: params.get('stock') ?? null,
-  optic: params.get('optic') ?? null,
-  bodycam: params.get('bodycam') !== '0',
-  hardcore: params.get('hardcore') !== '0',
-  deterministic: capture,
-});
+const { config, engine } = built;
+const shotApi = built.shotApi ?? installShotApi(engine, { capture, lockstep });
 
-const canvas = document.getElementById('game');
+// Direct links were never gated; for the menu path this hands input ownership
+// to gameplay only after the matching engine is fully warm and the menu is gone.
+engine.input.enabled = true;
+engine.input.lockSuppressed = false;
 
-const engine = new Engine({ canvas, config });
-
-// Registration order is irrelevant — Registry topo-sorts on static deps.
-engine
-  .add(RenderSystem)
-  .add(MaterialSystem)
-  .add(SkySystem)
-  .add(WorldSystem)
-  .add(PhysicsSystem)
-  .add(PlayerSystem)
-  .add(WeaponSystem)
-  .add(FxSystem)
-  .add(AiSystem)
-  .add(UiSystem)
-  .add(AudioSystem);
-
-try {
-  await engine.init();
-} catch (err) {
-  console.error('[boot] init failed', err);
-  document.body.insertAdjacentHTML(
-    'beforeend',
-    `<pre style="position:fixed;inset:0;padding:2rem;color:#f66;background:#000;
-       font:12px/1.5 ui-monospace,monospace;overflow:auto;z-index:9999;white-space:pre-wrap">
-BOOT FAILURE\n\n${err.stack ?? err.message}</pre>`
-  );
-  throw err;
+/**
+ * TOUCH BUILD. `?touch=1` forces it on for testing from a desktop and `?touch=0`
+ * forces it off on a phone; otherwise it follows the device. Everything it turns
+ * on — the on-screen controls, the aim assist and the auto-fire — is gated here,
+ * so a desktop player never gets any of it.
+ */
+const touchMode = params.get('touch') === '1' || (params.get('touch') !== '0' && isTouchDevice());
+// Printed because the aim assist rides on this flag, and a wrong answer here is
+// felt as the camera moving on its own rather than as a missing button.
+console.log(`[input] touch mode: ${touchMode} (aim assist ${touchMode ? 'ON' : 'off'})`);
+if (touchMode) {
+  engine.input.touchMode = true;
+  const controls = new TouchControls(document.body, engine.input);
+  const player = engine.ctx.peek('player');
+  if (player) {
+    player.assist = new AimAssist(engine.ctx);
+    player.assist.enabled = true;
+  }
+  // The overlay must not sit over the pause menu — it would eat every tap.
+  engine.events.on('ui:pause', ({ paused }) => controls.setVisible(!paused));
+  window.__TOUCH__ = controls;
+  /**
+   * Covers the deep-link path. The menu's Play button is normally the gesture
+   * that buys fullscreen, but `?map=` skips the menu entirely and Yandex still
+   * requires a mobile game to be fullscreen during gameplay — so on that path
+   * the first tap has to do it instead.
+   */
+  if (skipMenu) armFirstGesture();
 }
-
-const shotApi = installShotApi(engine, { capture, lockstep });
-
-// Compile every shader permutation before the frame loop starts. Measured: without
-// this, 86 programs compile lazily during play, up to 30 on one frame, producing
-// 3.1-3.9 SECOND stalls. See src/core/prewarm.js.
-//
-// ON BY DEFAULT since the capture path was made frame-deterministic; opt out with
-// `?prewarm=0`. It is now PROVEN pixel-neutral: `tools/baseline.mjs` with
-// `--query=prewarm=0` vs `--query=prewarm=1` reports identical:true on all 11
-// shots (0 changed pixels, maxDelta 0). The two things that previously made the
-// ~1.4 s pre-warm spend look like a visual change were both boot-duration
-// couplings OUTSIDE the subsystems: (1) the shutter frame index was latency-bound
-// because the engine kept stepping through the driver's round trips — fixed by
-// lockstep in src/dev/shots.js; (2) `will-change: transform` on the compass strip
-// cached a composited-layer raster taken at a wall-clock-dependent moment — fixed
-// in src/ui/style.js.
-// OFF by default. This was tried both ways and MEASURED both ways.
-//
-//   prewarm on   boot 48 s, worst in-play frame 69 ms
-//   prewarm off  boot  5 s, worst in-play frame 1005 ms
-//
-// The pre-warm does what it claims — it removes the multi-second compile stalls
-// described above — but it costs a flat ~20 s of BLOCKED MAIN THREAD (134
-// programs at ~150 ms each; it is already parallel inside each batch, so that is
-// simply what ANGLE charges for shaders this size). A player does not experience
-// that as a loading screen, they experience it as a dead page: nothing renders,
-// the menu does not respond to clicks, and the tab looks hung.
-//
-// One 1-second hitch beats 48 seconds of frozen tab, so the default is a fast
-// boot. `?prewarm=1` buys the stall-free run for anyone profiling or recording.
-//
-// The real fix is neither flag: it is FEWER AND SIMPLER PROGRAMS (206 live, 134
-// pre-warmed), or a pre-warm that runs incrementally across frames once the
-// game is already interactive. Both are bigger than a config change — see
-// CLAUDE_HANDOFF.md.
-const warmup =
-  params.get('prewarm') === '1'
-    ? await prewarm(engine)
-    : { ok: false, reason: 'off by default — ?prewarm=1 to compile everything up front' };
-console.info('[boot] prewarm', warmup);
-window.__PREWARM__ = warmup;
 
 engine.start();
-loading?.done();
 
 /**
  * Portal handshake. `loaded()` takes the portal's own loading screen down, and
  * the gameplay bracket has to follow real play rather than the page lifetime —
  * both portals use it for session analytics and Yandex certification checks it.
  */
-portal.loaded();
+/**
+ * What an ad has to do to the game: stop the clock, stop the gameplay bracket
+ * and mute the master bus. Injected rather than imported, so core/portal.js
+ * stays free of any dependency on audio or ui.
+ */
+portal.onPause = () => {
+  portal.gameplayStop();
+  // Spell this out: ad callbacks manipulate the engine clock, not wall time.
+  const time = engine.ctx.time;
+  portal._adScale = time.scale;
+  time.scale = 0;
+  engine.ctx.peek('audio')?.setMasterVolume?.(0);
+  // Music is an <audio> element outside the mixer graph, so master volume does
+  // not reach it and it has to be silenced by hand. Both portals fail a build
+  // whose own audio keeps playing under an ad.
+  music.setMuted(true);
+};
+portal.onResume = () => {
+  const time = engine.ctx.time;
+  time.scale = portal._adScale ?? 1;
+  engine.ctx.peek('audio')?.setMasterVolume?.(1);
+  music.setMuted(false);
+  if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
+};
+
+// The dev server appends ?t= for HMR, which makes a dynamic import of the same
+// path a DIFFERENT module instance. Expose the real singleton so the ad path can
+// actually be exercised from the console.
+window.__PORTAL__ = portal;
+// Same reason, and the music element is detached (`new Audio()`), so there is
+// no DOM query that finds it either.
+window.__MUSIC__ = music;
+
+// The menu path sent this immediately after its first paint. A direct/capture
+// path has no interactive front end, so it becomes ready only now.
+if (skipMenu) portal.loaded();
 portal.gameplayStart();
 engine.events.on('ui:pause', ({ paused }) => {
   if (paused) portal.gameplayStop();
   else portal.gameplayStart();
 });
+// Ad policy: one interstitial per session boundary (Strike match end, Holdout
+// run end), never mid-match. showInterstitial() no-ops without a portal SDK
+// and enforces its own 60s minimum gap, so this call site cannot get it wrong.
+engine.events.on('match:end', () => portal.showInterstitial());
+/**
+ * Bank on pause as well as on leaving. Without this an unlock earned during a
+ * session would not appear until the player closed the tab and came back, so the
+ * pause menu — the one place the loadout lives — would show the reward a whole
+ * session late. `bank()` is declared below and hoisted.
+ */
+engine.events.on('ui:pause', ({ paused }) => {
+  if (paused) bank();
+});
 document.addEventListener('visibilitychange', () => {
+  // A backgrounded tab that keeps playing music is the single most common
+  // reason a portal build gets a complaint, and Yandex checks for it.
+  music.setMuted(document.hidden);
   if (document.hidden) portal.gameplayStop();
   else if (!engine.ctx.peek('ui')?.menu?.open) portal.gameplayStart();
+});
+
+/**
+ * MUSIC IS WIRED BUT OFF BY DEFAULT — opt in with `?music=1`.
+ *
+ * The tracks, the licence plumbing and the ad/visibility muting are all in
+ * place; what is deliberately absent is any path that starts music without
+ * being asked. Turning it on for everyone is a design decision about the game's
+ * feel, and the volume, the per-map choice and whether a player can turn it off
+ * all want settling before a portal build carries it.
+ *
+ * When it is switched on: `engine.start()` is downstream of the Play click on
+ * the menu path and of the first tap on the `?map=` deep-link path (see
+ * armFirstGesture), so autoplay policy is already satisfied at this point.
+ * Capture runs stay silent regardless — the pixel harness compares frames, and
+ * a decode competing with the shutter is the nondeterminism baseline.mjs exists
+ * to remove.
+ */
+if (!capture && params.get('music') === '1') music.play(config.map);
+
+/**
+ * CAREER BANKING.
+ *
+ * There is no round end to hang this off — a TDM match here runs until the
+ * player leaves — so the session is banked when the tab goes away. `pagehide`
+ * plus `visibilitychange` is the pair that actually covers mobile: iOS Safari
+ * frequently never fires `pagehide` when the app is backgrounded or the tab is
+ * discarded, and `beforeunload` is unreliable on every mobile browser. Banking
+ * is idempotent through `_banked`, so firing both costs nothing.
+ *
+ * A kill is a `damage:dealt` with `killed` whose target is NOT the player —
+ * enemies killing each other in a crossfire are somebody's kill, but not ours.
+ */
+const session = { kills: 0, streak: 0, best: 0, start: performance.now() };
+engine.events.on('damage:dealt', (e) => {
+  if (!e?.killed) return;
+  const target = e.target;
+  const isPlayer = target === 'player' || target === engine.ctx.peek('player') || target?.isPlayer === true;
+  if (isPlayer) {
+    session.streak = 0;
+    return;
+  }
+  session.kills++;
+  session.streak++;
+  if (session.streak > session.best) session.best = session.streak;
+});
+
+/**
+ * Idempotent through the zero-kill guard rather than a one-shot flag: a player
+ * who tabs away and comes back must keep earning, so what is banked is drained
+ * instead of latched. The live streak survives the drain — the player is still
+ * alive and still on it.
+ */
+function bank() {
+  if (session.kills === 0) return;
+  bankSession({
+    kills: session.kills,
+    best: session.best,
+    seconds: (performance.now() - session.start) / 1000,
+  });
+  session.kills = 0;
+  session.best = session.streak;
+  session.start = performance.now();
+}
+addEventListener('pagehide', bank);
+// Exit-to-menu navigates away, and `pagehide` ordering is not something a career
+// should depend on. The pause menu emits this so the drain happens first.
+engine.ctx.events.on('session:bank', bank);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) bank();
 });
 
 
@@ -198,6 +514,74 @@ if (lockstep) {
 }
 
 window.__ENGINE__ = engine;
+
+/**
+ * Time-to-playable, measured from navigation start — the one number both
+ * portals grade on (CrazyGames: <=20 s hard, <10 s to hit their conversion
+ * benchmark). It has to be read on REAL hardware: most of boot is the material
+ * generator rendering to WebGLRenderTargets, and a headless/software rasterizer
+ * inflates exactly that, so the harness number is an upper bound, not a
+ * measurement. ponytail: console.log, not a HUD — this is a dev instrument.
+ */
+console.log(`[boot] playable in ${Math.round(performance.now())} ms`);
+
+/**
+ * F8 copies the diagnostic log to the clipboard.
+ *
+ * The `[hitch]` and `[warp]` lines only mean anything when they come from a real
+ * machine with a real GPU at a real frame rate, which means the person reading
+ * them is never the person playing. Asking a player to open devtools, filter a
+ * console and select text mid-session is enough friction that the evidence just
+ * does not arrive. One key does instead.
+ *
+ * Wrapping console.warn rather than teaching each logger about a buffer keeps
+ * the loggers unaware of this entirely — they print, this collects.
+ */
+{
+  const LOG = [];
+  const realWarn = console.warn.bind(console);
+  console.warn = (...args) => {
+    const first = String(args[0] ?? '');
+    if (first.startsWith('[hitch]') || first.startsWith('[warp]')) {
+      // Keep the tail: the interesting run is the one that just happened.
+      if (LOG.length > 400) LOG.shift();
+      LOG.push(`${(performance.now() / 1000).toFixed(1)}s ${args.join(' ')}`);
+    }
+    realWarn(...args);
+  };
+  window.__LOG__ = LOG;
+  addEventListener(
+    'keydown',
+    (ev) => {
+      if (ev.code !== 'F8') return;
+      ev.preventDefault();
+      const gpu = (() => {
+        try {
+          const gl = engine.ctx.get('render').renderer.getContext();
+          const d = gl.getExtension('WEBGL_debug_renderer_info');
+          return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'unknown';
+        } catch {
+          return 'unknown';
+        }
+      })();
+      const head = [
+        `hotline-strike diagnostics`,
+        `gpu: ${gpu}`,
+        `quality: ${engine.ctx.config.quality}  map: ${engine.ctx.config.map}`,
+        `boot: ${Math.round(performance.now())} ms elapsed  frame ${engine.time.frame}`,
+        `entries: ${LOG.length}`,
+        '',
+      ].join('\n');
+      const text = head + (LOG.length ? LOG.join('\n') : '(no hitches or warps recorded)');
+      navigator.clipboard
+        ?.writeText(text)
+        .then(() => console.info(`[diag] copied ${LOG.length} entries to clipboard`))
+        .catch(() => console.info('[diag] clipboard blocked — read window.__LOG__ instead'));
+    },
+    true
+  );
+  console.info('[diag] press F8 to copy the hitch/warp log to the clipboard');
+}
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => engine.dispose());

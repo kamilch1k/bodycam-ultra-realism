@@ -681,7 +681,13 @@ export const WEAPON_MATERIALS = {
        * the gun instead of separating from it. A glove and a combat shirt are the
        * same kit at the same wash; 0.19 lands the shell ~0.35 stop under the
        * sleeve, which is the interval the original note asked for. */
-      tint: c(0.19, 0.155, 0.127),
+      /* Lifted ~1.6x from 0.19/0.155/0.127. The rig's 10x albedo crush is a
+       * deliberate global convention and the gun survives it because it is
+       * specular-dominant — a highlight carries the form even when the base is
+       * near black. Leather and ripstop have no such lobe, so the same crush
+       * put the hands in silhouette while the weapon read fine. Only the two
+       * arm materials move; the crush stands everywhere else. */
+      tint: c(0.30, 0.25, 0.205),
       // 0.9+ is non-negotiable: a glove has no gloss lobe at all. The floor
       // stops the fabric ORM dipping into anything that could catch a highlight.
       roughness: [0.92, 0.06, 0.78],
@@ -829,7 +835,8 @@ export const WEAPON_MATERIALS = {
        * garment than the gloves and it is the thing that should read as the
        * warmest object on the rig.
        */
-      tint: c(0.16, 0.152, 0.138),
+      // Lifted with the glove, keeping the 2/3-stop gap above it noted below.
+      tint: c(0.26, 0.245, 0.22),
       roughness: [0.95, 0.05, 0.8],
       normalStrength: 1.45,
       // ~6 mm ripstop grid at this tile, at full amplitude on both albedo and

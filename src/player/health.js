@@ -79,6 +79,28 @@ export class Health {
    */
   damage(amount, from, opts = {}) {
     if (this.dead || amount <= 0) return 0;
+
+    /**
+     * Armour soaks first, and completely.
+     *
+     * A percentage reduction would be invisible — the player would see the same
+     * bar fall slightly slower and could not tell the plate was doing anything.
+     * A separate pool that eats hits whole until it breaks is legible: you can
+     * watch it go, and you know the moment you are back on bare health.
+     *
+     * The hit still registers below with the FULL incoming amount, so the
+     * direction indicator and the flash fire normally; taking a plate does not
+     * make you blind to where you are being shot from.
+     */
+    const incoming = amount;
+    const perks = this.ctx?.perks;
+    if (perks?.armor > 0) {
+      const soak = Math.min(perks.armor, amount);
+      perks.armor -= soak;
+      amount -= soak;
+      if (amount <= 0) this.ctx.events?.emit?.('armor:hit', { soak, armor: perks.armor });
+    }
+
     const before = this.value;
     this.value = Math.max(0, this.value - amount);
     this.lastDamageTime = this.ctx.time.elapsed;
@@ -95,7 +117,9 @@ export class Health {
       const f = -Math.sin(yaw) * dx - Math.cos(yaw) * dz;
       const r = Math.cos(yaw) * dx - Math.sin(yaw) * dz;
       angle = Math.atan2(r, f);
-      this._pushIndicator(angle, dealt, from);
+      // `incoming`, not `dealt`: a hit fully stopped by armour still has to
+      // show which direction it came from.
+      this._pushIndicator(angle, incoming, from);
     }
 
     // ---- felt response --------------------------------------------------
@@ -169,13 +193,19 @@ export class Health {
     // grade all key off `fraction`, a wound keeps costing you accuracy for as
     // long as you stay alive with it.
     const since = this.ctx.time.elapsed - this.lastDamageTime;
+    // Perks widen the ceiling and shorten the wait. Read every frame rather
+    // than latched on pickup, so a perk taken mid-regen applies immediately.
+    // They do nothing in hardcore, which has no regeneration to widen.
+    const perks = this.ctx?.perks;
+    if (perks) this.max = perks.maxHealth;
+    const delay = Math.max(0.8, H.regenDelay - (perks?.regenDelayCut ?? 0));
     if (this.ctx.config.hardcore) {
       this.regenerating = false;
-    } else if (!this.dead && this.value < this.max && since > H.regenDelay) {
+    } else if (!this.dead && this.value < this.max && since > delay) {
       this.regenerating = true;
       // Ramp in so the recovery has a shape rather than a step.
-      const ramp = clamp01((since - H.regenDelay) / H.regenRamp);
-      this.value = Math.min(this.max, this.value + H.regenRate * ramp * dt);
+      const ramp = clamp01((since - delay) / H.regenRamp);
+      this.value = Math.min(this.max, this.value + H.regenRate * (perks?.regenMult ?? 1) * ramp * dt);
     } else if (this.value >= this.max) {
       this.regenerating = false;
     }

@@ -6,12 +6,17 @@ import { Hitmarkers } from './hitmarkers.js';
 import { DamageArcs } from './damage.js';
 import { HealthFx } from './health.js';
 import { AmmoPanel } from './ammo.js';
+import { SurvivorPanel } from './survivor.js';
+import { LevelRoll } from './levelroll.js';
 import { Killfeed } from './killfeed.js';
 import { Compass, MatchBar } from './compass.js';
 import { Minimap } from './minimap.js';
 import { WorldMarkers } from './markers.js';
 import { Prompt, Banner } from './prompts.js';
 import { PauseMenu } from './menu.js';
+import { Gunsmith } from './gunsmith.js';
+import { PerfHud } from './perfhud.js';
+import { PerkCard } from './perkcard.js';
 import { CombatDemo } from './demo.js';
 
 const MAX_BLIPS = 48;
@@ -88,9 +93,33 @@ export class UiSystem {
     this.matchBar = new MatchBar(this.chromeLayer);
     this.killfeed = new Killfeed(this.chromeLayer);
     this.ammo = new AmmoPanel(this.chromeLayer);
+    this.surv = new SurvivorPanel(this.chromeLayer);
     this.prompt = new Prompt(this.chromeLayer);
     this.banner = new Banner(this.chromeLayer);
+    /**
+     * Mounted on the ROOT, not the chrome layer: the chrome layer is hidden with
+     * the rest of the HUD in the menus and in capture mode, and a frame-time
+     * overlay that disappears exactly when you open a menu to look at it is
+     * useless.
+     */
+    this.perkCard = new PerkCard(this.chromeLayer, ctx);
+    // Non-modal level-up readout, under the compass. See levelroll.js.
+    this.levelRoll = new LevelRoll(this.chromeLayer);
+    this.perf = new PerfHud(this.root);
+    this._onPerfKey = (e) => {
+      if (e.code !== 'F3') return;
+      e.preventDefault();
+      this.perf.toggle();
+    };
+    addEventListener('keydown', this._onPerfKey);
     this.menu = new PauseMenu(this.root, ctx);
+    this.gunsmith = new Gunsmith(this.root, ctx);
+    // The pause menu owns no attachment rows any more; it routes to the
+    // gunsmith instead, so there is still a mouse-only way in.
+    this.menu.onLoadout = () => {
+      this.menu.close();
+      this.gunsmith.show();
+    };
 
     this.health.onBeat = (i) => this.sfx('heartbeat', 0.35 + i * 0.5);
 
@@ -244,6 +273,51 @@ export class UiSystem {
     this._prevPos.copy(this._playerPos());
   }
 
+  /**
+   * Finish the one-time minimap bake behind the front menu.
+   *
+   * Miami has no vector-map source, so Minimap falls back to a 512px depth
+   * render. Leaving that on its normal frame-20 retry created three depth
+   * programs, a synchronous readback and the bitmap pass just as gameplay
+   * started. Core's pacing gate admits the whole non-preemptible bake as one
+   * job; afterwards `bakeDone` keeps the ordinary lateUpdate path inert.
+   */
+  async prewarmMaterials(ctx = this.ctx, { beforeJob, signal } = {}) {
+    const renderer = ctx?.peek?.('render')?.renderer;
+    if (!renderer || !this.minimap) return { ok: false, reason: 'minimap or renderer unavailable' };
+
+    const abort = () => {
+      if (!signal?.aborted) return;
+      const err = new Error('UI pre-warm aborted');
+      err.name = 'AbortError';
+      throw err;
+    };
+
+    const before = renderer.info.programs?.length ?? 0;
+    const t0 = performance.now();
+    abort();
+    if (beforeJob) await beforeJob({ phase: 'ui-minimap', index: 0, total: 1 });
+    abort();
+    this.minimap.tryBake(ctx);
+    abort();
+
+    // At this point every world subsystem has finished init. If the depth
+    // occupancy test still rejected the arena, retrying the identical render
+    // at frames 20/40/... can never reveal new static map geometry; it only
+    // repeats the readback hitch before eventually showing the same grid.
+    // Commit that existing fallback now and release the failed bake targets.
+    const fallback = !this.minimap.bakeDone;
+    if (fallback) this.minimap.finishFallback();
+
+    return {
+      ok: true,
+      baked: !fallback,
+      fallback,
+      ms: Math.round(performance.now() - t0),
+      programs: (renderer.info.programs?.length ?? 0) - before,
+    };
+  }
+
   /* ------------------------------------------------------------- helpers -- */
 
   _weaponState() {
@@ -271,6 +345,20 @@ export class UiSystem {
     const pos = p?.position ?? p?.getPosition?.();
     if (pos && pos.isVector3) return this._pos.copy(pos);
     return this._pos.copy(this.ctx.camera.position);
+  }
+
+  /**
+   * Forget that the pointer was ever locked.
+   *
+   * A modal that closes has to call this. Releasing and re-taking the pointer is
+   * asynchronous: close() clears `lockSuppressed` and asks for the lock back,
+   * but the lock does not arrive for a frame or two, and in that gap the check
+   * in update() sees "we had lock, we lost it, nothing is suppressing" and reads
+   * it as an Escape — so DISMISSING the perk card was what raised the pause
+   * menu, not showing it. Clearing the latch closes that window.
+   */
+  ignoreLockLoss() {
+    this._hadPointerLock = false;
   }
 
   /** Fire-and-forget audio; the audio subsystem may not exist yet. */
@@ -405,17 +493,43 @@ export class UiSystem {
     const s = this.state;
     s.time = t.elapsed;
 
-    // ---- pause -----------------------------------------------------------
+    // ---- pause / gunsmith --------------------------------------------------
     if (ctx.input.enabled && !ctx.input.frozen) {
-      if (ctx.input.actionPressed('pause')) this.menu.toggle();
-      // Losing pointer lock mid-match is the same intent as pressing Escape.
+      /**
+       * Escape closes the gunsmith rather than stacking the pause menu on top of
+       * it. Two modal screens open at once means two things holding `time.scale`
+       * at zero and the second one to close wins, which is how a game gets stuck
+       * frozen with no menu on screen.
+       */
+      if (ctx.input.actionPressed('pause')) {
+        if (this.gunsmith.open) this.gunsmith.close();
+        else this.menu.toggle();
+      }
+      if (ctx.input.actionPressed('loadout') && !this.menu.open) this.gunsmith.toggle();
+      /**
+       * Losing pointer lock mid-match is the same intent as pressing Escape —
+       * UNLESS a modal released it on purpose.
+       *
+       * `lockSuppressed` is exactly that signal: every modal that wants the
+       * cursor sets it before calling exitPointerLock(). Without this check the
+       * level-up perk card, which must release the pointer so its cards can be
+       * clicked, was read as an Escape and pulled the pause menu up underneath
+       * itself — a reward screen that opened the pause menu to hand you a perk.
+       */
       if (ctx.input.pointerLocked) this._hadPointerLock = true;
-      else if (this._hadPointerLock && !this.menu.open) {
+      else if (
+        this._hadPointerLock &&
+        !ctx.input.lockSuppressed &&
+        !this.menu.open &&
+        !this.gunsmith.open
+      ) {
         this._hadPointerLock = false;
         this.menu.show();
       }
     }
+    this.perf.update(rawDt, ctx);
     this.menu.update(rawDt);
+    this.gunsmith.update(rawDt);
 
     // ---- external state --------------------------------------------------
     // `simulate` means a scripted debug timeline owns the HUD numbers; letting
@@ -508,7 +622,13 @@ export class UiSystem {
     this.arcs.update(dt, rx, rz, fx, fz);
     this.health.update(dt, s);
     this.ammo.update(dt, s);
+    this.surv.update(dt, ctx.perks);
+    this.levelRoll.update(dt);
     this.killfeed.update(dt);
+    // The active mode owns the score line. Merged here rather than pushed from
+    // the mode so a mode that is absent (tdm/sandbox) simply leaves the HUD's
+    // own defaults alone.
+    if (ctx?.match) Object.assign(s, ctx.match);
     this.matchBar.update(s);
     this.prompt.update(dt);
     this.banner.update(dt);
@@ -584,7 +704,27 @@ export class UiSystem {
   resize(w, h, ctx) {
     this.vw = w;
     this.vh = h;
-    this.k = clamp(h / 1080, 0.62, 2.4);
+    /**
+     * HUD scale.
+     *
+     * Proportional to height is right while the screen is big: the HUD keeps the
+     * same share of the frame at 1440p as at 1080p. It is wrong once the screen
+     * is short, because the smallest label in here is 10.5px * k — at 0.62 that
+     * is a SIX PIXEL glyph, and CrazyGames tests legibility at devicePixelRatio
+     * 1 on exactly the two cases that produce it: a phone in landscape (390 tall)
+     * and a small 16x9 iframe (450 tall).
+     *
+     * So the scale never goes below 1: the HUD is never rendered smaller than
+     * the 1080p design it was tuned at, whatever the screen does. The widgets
+     * that are then too large for a short viewport — minimap, compass — are
+     * re-sized by breakpoint in style.js instead, because the fix for "the
+     * minimap is too big" is a smaller minimap, not smaller type everywhere.
+     *
+     * 1.0 exactly, so a 1080p desktop is pixel-identical to before this floor
+     * existed. Anything larger would silently restyle the reference design.
+     */
+    const FLOOR = 1;
+    this.k = clamp(Math.max(h / 1080, FLOOR), FLOOR, 2.4);
     this.root.style.setProperty('--k', this.k.toFixed(4));
     this.crosshair.setScale(this.k);
     this.compass.setScale(this.k);
@@ -599,6 +739,7 @@ export class UiSystem {
     this.arcs.dispose();
     this.health.dispose();
     this.ammo.dispose();
+    this.surv.dispose();
     this.killfeed.dispose();
     this.compass.dispose();
     this.matchBar.dispose();
@@ -606,7 +747,12 @@ export class UiSystem {
     this.markers.dispose();
     this.prompt.dispose();
     this.banner.dispose();
+    removeEventListener('keydown', this._onPerfKey);
+    this.perkCard.dispose();
+    this.levelRoll.dispose();
+    this.perf.dispose();
     this.menu.dispose();
+    this.gunsmith.dispose();
     this.root.remove();
     removeStyles();
   }

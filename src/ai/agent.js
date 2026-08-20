@@ -23,6 +23,14 @@
 import * as THREE from 'three';
 import { RIG } from './rig.js';
 import { Animator } from './animator.js';
+/**
+ * The behaviour SPEC, which is not the same object as `this.def`.
+ * `ai.variant()` returns the built mesh, materials and stats — reading `rush`
+ * off that silently yielded undefined, so every ghoul used the soldier tree
+ * while appearing to be configured as a rusher.
+ */
+import { VARIANTS } from './soldier.js';
+import { attachBillboard } from './billboard.js';
 
 const STATE = {
   IDLE: 'idle',
@@ -117,6 +125,21 @@ export class Agent {
     this.group.scale.setScalar(this.scale);
     ai.root.add(this.group);
 
+    /**
+     * Flat enemies. Purely a swap of what is DRAWN — the skinned mesh is hidden
+     * rather than removed, because physics adopts that skeleton to build the
+     * ragdoll on death, and everything else (nav, steering, damage, melee) runs
+     * off the rig regardless of what is visible. So this costs one hidden mesh
+     * and needs no special case anywhere in the behaviour tree.
+     */
+    if (def.variant.billboard) {
+      this.mesh.visible = false;
+      this.billboard = attachBillboard(this.group, {
+        seed: this.id,
+        height: def.variant.flatHeight ?? 1.9,
+      });
+    }
+
     /** Physics looks for these when it adopts the skeleton on death. */
     this.skinnedMesh = this.mesh;
     this.mass = 82 * this.scale;
@@ -202,6 +225,34 @@ export class Agent {
     this.alertness = 0;
 
     /* ---------------- combat ---------------- */
+    /**
+     * RUSHERS close and claw instead of taking cover and shooting.
+     *
+     * The cover-shooter tree below is right for soldiers and completely wrong
+     * for a horde: it sends the agent to a cover point 7-30 m from its target
+     * and holds it there, which measured (tools/ai-check.mjs) as ghouls stalling
+     * in a 30-34 m ring and only 2 of 21 ever reaching the player. From the
+     * player's side that reads as enemies milling about near walls rather than
+     * coming for them.
+     */
+    const spec = VARIANTS[this.variantName] ?? {};
+    this.rush = !!spec.rush;
+    this.meleeRange = spec.melee?.range ?? 2.1;
+    this.meleeDamage = spec.melee?.damage ?? 14;
+    this.meleeInterval = spec.melee?.interval ?? 1.05;
+    /**
+     * Per-variant durability and pace.
+     *
+     * A horde only has texture if the bodies in it are not interchangeable —
+     * something that soaks a magazine has to be answered differently from
+     * something that arrives in a swarm, and a variant that is only a recolour
+     * plays exactly the same. Health and speed were both hardcoded, so tints
+     * were the only thing a variant could actually change.
+     */
+    this.maxHealth = spec.health ?? 100;
+    this.health = this.maxHealth;
+    this.rushSpeed = spec.rushSpeed ?? 5.0;
+    this.meleeCooldown = this.rng.range(0, 0.6);
     this.weaponRange = 60;
     this.fireRate = this.variantName === 'irregular' ? 8.2 : 10.5;
     this.burstLeft = 0;
@@ -222,6 +273,8 @@ export class Agent {
     this.hasGrenade = true;
 
     /* ---------------- navigation ---------------- */
+    /** Scratch waypoint for a rusher's direct final approach — see _rush. */
+    this._direct = new THREE.Vector3();
     this.path = [];
     this.pathLen = 0;
     this.pathIndex = 0;
@@ -298,6 +351,31 @@ export class Agent {
   _sense(dt) {
     const player = this.ai.playerPosition(this._v3);
     if (!player) return;
+
+    /**
+     * A RUSHER ALWAYS KNOWS WHERE YOU ARE.
+     *
+     * Sight cones, line of sight and awareness build-up are what make a soldier
+     * worth flanking; applied to a horde they produce a crowd that has never
+     * noticed the player and wanders its patrol instead. Measured before this:
+     * ghouls spawned 40 m out and simply never acquired, so the charge in
+     * `_rush` was dead code and the enemies "just walked into walls".
+     *
+     * The genre this mode copies makes the swarm omniscient for exactly this
+     * reason — the threat is that they are always coming, and the interest is in
+     * position and crowd control, not in whether they have spotted you.
+     */
+    if (this.rush) {
+      this.lastKnown.copy(player);
+      this.lastKnownAge = 0;
+      this.awareness = 1;
+      this.alertness = 1;
+      this.hasTarget = true;
+      this.target = player;
+      this.targetVisible = true;
+      return;
+    }
+
     const eye = this.eye;
     const to = this._dir.copy(player).sub(eye);
     const dist = to.length();
@@ -535,6 +613,81 @@ export class Agent {
     this.repathTimer = 0;
   }
 
+  /**
+   * Horde behaviour: go at the target and hit it.
+   *
+   * No cover, no burst discipline, no standoff — the whole point of the archetype
+   * is that it does not respect range. It repaths often because the target is a
+   * moving player rather than a fixed cover point, and a path computed two
+   * seconds ago aims where they used to be, which is the other half of what
+   * "walking into walls" actually looked like.
+   *
+   * The final approach deliberately steers straight at the target rather than
+   * following nav nodes. Inside a couple of metres the grid is coarser than the
+   * distances involved, and node-following at that range makes an enemy shuffle
+   * sideways around its own path instead of closing.
+   */
+  _rush(dt, target, dist) {
+    this.wantFire = false;
+    // Closing pace is the variant's; the last few metres are always slower so
+    // the swing has a wind-up you can back out of.
+    this.desiredSpeed = dist > 3 ? this.rushSpeed : this.rushSpeed * 0.68;
+    this.aimTarget.lerp(this._v.set(target.x, target.y + 0.05, target.z), Math.min(1, dt * 8));
+
+    if (dist <= this.meleeRange) {
+      this.desiredSpeed = 0;
+      this.hasMoveTarget = false;
+      this.meleeCooldown -= dt;
+      if (this.meleeCooldown <= 0) {
+        this.meleeCooldown = this.meleeInterval;
+        this.ai.onAgentMelee(this, this.meleeDamage);
+      }
+      return;
+    }
+
+    if (dist < 4.5) {
+      // Hand `_move` a one-waypoint path straight at the target. Inside a few
+      // metres the nav grid is coarser than the distance involved, and following
+      // its nodes makes an agent shuffle sideways instead of closing.
+      this._direct.copy(target);
+      this.path[0] = this._direct;
+      this.pathLen = 1;
+      this.pathIndex = 0;
+      this.moveTarget.copy(target);
+      this.hasMoveTarget = true;
+      return;
+    }
+
+    this.repathTimer -= dt;
+    if (this.repathTimer <= 0 || !this.hasMoveTarget) {
+      this.repathTimer = this.rng.range(0.4, 0.9);
+      this._goTo(target);
+    }
+
+    /**
+     * FALL BACK TO STEERING WHEN THE PATH CANNOT REACH THE PLAYER.
+     *
+     * A* terminates on a walkable cell, and the player is very often not stood
+     * on one — measured on holdout, the player's own cell is unwalkable, so
+     * every route ended at the boundary of that region and the agents parked
+     * there. That is what "enemies just go straight into walls" looked like from
+     * the outside: not lost, but arrived, at a destination that was not the
+     * player.
+     *
+     * A rusher would rather push at the target and let the character controller
+     * slide it along whatever it meets than stand at the end of a path that
+     * stopped ten metres short.
+     */
+    if (!this.hasMoveTarget || this.moveTarget.distanceTo(target) > 2.5) {
+      this._direct.copy(target);
+      this.path[0] = this._direct;
+      this.pathLen = 1;
+      this.pathIndex = 0;
+      this.moveTarget.copy(target);
+      this.hasMoveTarget = true;
+    }
+  }
+
   _combat(dt) {
     const target = this.hasTarget ? this.lastKnown : this.lastKnownAge < 5 ? this.lastKnown : null;
     if (!target) {
@@ -543,6 +696,11 @@ export class Agent {
     }
     const sq = this.squad;
     const dist = this.position.distanceTo(target);
+
+    if (this.rush) {
+      this._rush(dt, target, dist);
+      return;
+    }
 
     // wounded and outgunned: fall back
     if (this.health < 34 && this.stateTime > 1.5 && this.rng.float() < dt * 0.5) {
@@ -1155,6 +1313,11 @@ export class Agent {
     for (const c of this.colliders) this.phys?.removeCollider(c);
     this.colliders.length = 0;
     if (this.ragdoll) this.phys?.removeRagdoll(this.ragdoll);
+    // Three allocates a private floating-point bone texture the first time each
+    // Skeleton is rendered.  Removing the group does not release it; without
+    // disposing the Skeleton every cleared wave leaves those GPU textures
+    // resident even though all geometry and character materials are shared.
+    this.skeleton?.dispose?.();
     this.group.parent?.remove(this.group);
   }
 }

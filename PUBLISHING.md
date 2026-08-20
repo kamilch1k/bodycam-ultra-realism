@@ -8,30 +8,34 @@ npm run build:crazygames
 ```
 
 Each writes `dist-portal/<portal>/` and `dist-portal/<portal>.zip`. The archive
-is **0.48 MB** — one self-contained `index.html` plus the third-party notices.
-Every asset in this game is generated at runtime, so there is no art payload at
-all; both portals' size limits (Yandex 100 MB, CrazyGames 500 MB) are two orders
-of magnitude away.
+is **6.5 MB**: `index.html`, the third-party notices, `audio/` and `models/`.
+Both portals' size limits (Yandex 100 MB, CrazyGames 500 MB) are still a long
+way off.
+
+It used to be 0.48 MB and one self-contained file, because every asset was
+generated at runtime. Three downloaded files now break that — the music
+(CC BY 4.0) and the zombie mesh (CC BY 3.0). Two consequences worth knowing:
+
+  - **The `file://` check in the checklist no longer covers assets.** `fetch()`
+    is blocked on `file://`, so the model 404s when you double-click index.html
+    even though the page itself loads. Serve over http to test for real:
+    `npx vite preview`, or any static server.
+  - **Attribution is now a licence condition, not a courtesy.** See
+    THIRD-PARTY-NOTICES.txt; the credit also belongs in each store listing.
 
 Upload the ZIP. Both portals want `index.html` at the archive root, which is
 what the packager produces.
 
 ---
 
-## BLOCKING before either submission
+## Rename — already done
 
-**The game is called BODYCAM.** That is an active Blizzard Entertainment
-trademark in the video-game class, it is displayed at full size on the main menu
-and it is in `<title>`. Neither portal will pass certification with it, and
-shipping it commercially is an infringement rather than a naming quibble. This
-is a decision, not a task — pick a name and it changes in three places:
-
-- `index.html` — `<title>`
-- `src/ui/mainmenu.js` — the menu wordmark
-- `src/ui/menu.js` — the pause-screen subtitle
-
-Everything else refers to the project as `claude-of-duty` internally, which is
-fine; it is not player-visible.
+The game is titled **Bodycam — Ultra Realism** in `<title>`, the main-menu wordmark, and
+the pause-screen subtitle. (This section used to warn that the name was an
+active Blizzard trademark — that was leftover text from the OVERWATCH original
+this project forked from, not a real issue with "Hotline Strike".) Internally
+the project still refers to itself as `claude-of-duty`, which is fine; it is
+not player-visible.
 
 ---
 
@@ -58,23 +62,15 @@ behind its own loading screen. The gameplay bracket follows the pause menu and
 tab visibility, because both portals use it for session analytics and Yandex
 certification checks it.
 
-## What is deliberately NOT wired: ads
+## Ad policy — decided: one interstitial per session boundary
 
-Both portals pay on impressions and both have interstitial and rewarded-video
-APIs. Where an ad breaks into a session is a design decision with real
-consequences for retention and for certification — Yandex rejects builds that
-show an interstitial before the player has played at all. The hooks are in place
-(`gameplayStart`/`gameplayStop` are exactly what an ad policy keys off), and the
-policy itself needs a decision rather than a guess.
-
-The usual shape, when you want it:
-
-- **Interstitial** between matches, never mid-match, never on first load, and
-  with at least 60 s between showings (Yandex enforces this).
-- **Rewarded video** for something optional and repeatable.
-- Both portals require gameplay to be **paused and muted** for the ad's
-  duration; `portal.gameplayStop()` already does the analytics half of that, but
-  the audio and the time scale have to be handled at the call site.
+`modes/index.js` emits `match:end` when a Strike match ends (win or lose) and
+when a Holdout run ends (death) — never mid-match, never on the first load.
+`main.js` listens for it and calls `portal.showInterstitial()`, which itself
+enforces the 60 s minimum gap, mutes and pauses for the ad's duration, and
+restores both on every exit path including errors. No rewarded video yet —
+optional/repeatable rewards would be the natural place for one, not added
+because there is no reward to gate on it.
 
 ## Portal-specific notes
 
@@ -91,8 +87,8 @@ a player turn shadows off entirely, so there is headroom below the default.
 
 ## Checklist
 
-- [ ] Rename the game (see BLOCKING above)
-- [ ] Decide the ad policy, or ship without ads
+- [x] Rename the game
+- [x] Decide the ad policy
 - [ ] `npm run build:yandex && npm run build:crazygames`
 - [ ] Test each archive by unzipping and opening `index.html` directly — it is
       built to run from `file://`, so this catches a broken bundle in seconds

@@ -4,6 +4,7 @@ import { BUILDINGS, STREET, SET_PIECES, GATE } from './layout.js';
 import { buildGround } from './ground.js';
 import { buildWhitebox } from './whitebox.js';
 import { buildShootHouse } from './shoothouse.js';
+import { buildArena, ARENAS } from './arenas.js';
 import { buildBuilding, collapseRoof } from './buildings.js';
 import { registerProps } from './props.js';
 import {
@@ -143,9 +144,52 @@ export class WorldSystem {
      * of it. See whitebox.js and shoothouse.js.
      */
     const mapId = ctx.config.map;
-    const box = mapId === 'box' || mapId === 'swat';
+    const box = mapId === 'box' || mapId === 'swat' || !!ARENAS[mapId];
     if (mapId === 'box') buildWhitebox(A);
     else if (mapId === 'swat') buildShootHouse(A);
+    else if (ARENAS[mapId]) buildArena(A, mapId);
+
+    /**
+     * TIME OF DAY IS THE MAP'S, NOT A GLOBAL.
+     *
+     * Every arena was lit by the same default midday sun, which is why they all
+     * photographed as grey concrete regardless of what the palette said — a flat
+     * overhead light with a pale sky washes tinted plaster back to stone. The
+     * hour does more for how a level reads than any amount of extra geometry, so
+     * each arena now carries its own: Miami at low sun for long shadows and warm
+     * bounce, the Zone under a cold late-afternoon overcast.
+     */
+    const hour = ARENAS[mapId]?.sky;
+    if (hour !== undefined) ctx.peek('sky')?.setTimeOfDay?.(hour);
+    /**
+     * The sky was grey because of WEATHER, not the hour. Default cloud coverage
+     * plus fog plus turbidity is an overcast haze, and an overcast sky is a grey
+     * dome no matter where the sun is — which is why moving Miami to sunset just
+     * made the grey warmer. Clearing the cloud and dropping the fog is what lets
+     * the scattering gradient actually show.
+     */
+    // setWeatherFrom, not setWeather: a map with no weather block must get the
+    // defaults back rather than whatever the previously loaded map left behind.
+    ctx.peek('sky')?.setWeatherFrom?.(ARENAS[mapId]?.weather ?? {});
+
+    /**
+     * EXPOSURE IS WHY REPAINTING THE MAP NEVER CHANGED ANYTHING.
+     *
+     * render/exposure.js is a real photographic meter: it reduces the frame's
+     * log luminance to an EV100 and scales by it, so whatever fills the frame
+     * gets driven toward mid-grey. Paint the deck white and the meter simply
+     * stops down until it is grey again — measured, a deck whose albedo is 0.79
+     * linear arrived on screen at 0.30. Several rounds of "make the walls
+     * white" were fighting that loop and losing, because albedo is the one
+     * thing a meter is designed to cancel out.
+     *
+     * The bias is in EV and POSITIVE IS DARKER, so a stylised map that wants to
+     * sit above middle grey asks for a negative one. A map that omits it gets
+     * 0, i.e. the photoreal metering everything had before — assigned rather
+     * than skipped, because the bias lives on the render system and a
+     * conditional would let one map's look leak into the next one loaded.
+     */
+    ctx.peek('render')?.setExposureBias?.(ARENAS[mapId]?.exposure ?? 0);
 
     // 1. prototypes first: the level references them by id while it builds
     if (!box) {
@@ -190,7 +234,8 @@ export class WorldSystem {
     // -------------------------------------------------------------- queries --
     this._v = new THREE.Vector3();
     this._inv = new THREE.Matrix4().copy(A.xform).invert();
-    this.spawnPoints = (mapId === 'swat' ? SWAT_SPAWNS : SPAWNS).map(([x, z, yaw, tag]) => ({
+    const spawnTable = ARENAS[mapId]?.spawns ?? (mapId === 'swat' ? SWAT_SPAWNS : SPAWNS);
+    this.spawnPoints = spawnTable.map(([x, z, yaw, tag]) => ({
       position: A.toWorld(x, 0, z),
       yaw: yaw + LEVEL_YAW,
       tag,

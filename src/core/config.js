@@ -8,6 +8,12 @@ export const PHYSICS_HZ = 120;
 export const FIXED_DT = 1 / PHYSICS_HZ;
 /** Never simulate more than this many physics steps in one frame (spiral-of-death guard). */
 export const MAX_SUBSTEPS = 8;
+/**
+ * Longest frame the simulation will believe, in seconds. Six fixed steps — kept
+ * under MAX_SUBSTEPS on purpose, so catch-up is bounded by this clamp and not by
+ * the backlog-shedding branch. See the note in Engine.step.
+ */
+export const MAX_FRAME_DT = 0.05;
 
 /** Real-world units are metres, seconds, kilograms. */
 export const UNITS = {
@@ -19,6 +25,65 @@ export const UNITS = {
 };
 
 export const QUALITY_PRESETS = {
+  /**
+   * MOBILE — the shipping default for the portals.
+   *
+   * The one structural difference from `low` is `shadows: false`. The cascade
+   * pass was measured at 326 of the frame's 644 draw calls and 3.0M of its 5.1M
+   * triangles; on a phone GPU that is not a 1.3 ms line item, it is the frame.
+   *
+   * NO SHADOWS OF ANY KIND, and no screen-space luxuries. Contact shadows used
+   * to be kept here as the cheap stand-in that stops everything floating — a
+   * short screen-space ray march resolving the 0-40 cm under a crate or a boot.
+   * They are gone too, because "cheap" was measured per FRAME and the cost that
+   * matters is per PIXEL.
+   *
+   * A screen-space march costs in proportion to what fills the screen, and the
+   * reported hitch is walking up to an enemy: at two metres a soldier covers a
+   * large fraction of the viewport, and every one of those pixels marches. The
+   * approach probe showed draw calls flat at 235 and triangles flat at 250k
+   * from 54 m to 2 m — the geometry does not change, so a per-pixel pass is the
+   * only thing left that grows as you close in.
+   *
+   * Bloom goes for the same reason: another full-screen pass, on a build whose
+   * job is to run on a phone in a portal iframe.
+   *
+   * Everything here is still available — `?q=high`, `?q=ultra`, or the quality
+   * menu. This is only what a first-time portal player gets by default, and for
+   * them a stable frame beats grounded contact every time.
+   */
+  mobile: {
+    renderScale: 0.7,
+    shadows: false,
+    contactShadows: false,
+    shadowMapSize: 512,
+    cascades: 1,
+    shadowDistance: 30,
+    taa: false,
+    gtao: false,
+    ssr: false,
+    volumetrics: false,
+    motionBlur: false,
+    bloom: false,
+    anisotropy: 2,
+    charTextureSize: 192,
+    /**
+     * Radial segment scale for every curve in the viewmodel — see
+     * weapons/geometry.js. The authored counts target a 1080p desktop ADS
+     * frame; a phone's is well under half that.
+     */
+    meshDetail: 0.45,
+    /**
+     * Soldier mesh density — see ai/geo.js. Enemies are the largest remaining
+     * item in the frame and, unlike the weapon, are never closer than a few
+     * metres, so they carry a cut far more readily.
+     */
+    aiDetail: 0.5,
+    /** One material for the whole glove — see the note in viewmodel.js. */
+    simpleGlove: true,
+    particleBudget: 1800,
+    decalBudget: 48,
+  },
   low: {
     // Web-first default: keep the scene readable while avoiding the expensive
     // desktop-only effects that make the first frame and steady-state GPU cost
@@ -98,11 +163,15 @@ export const QUALITY_PRESETS = {
 export const DEFAULTS = {
   // Start in the web-safe profile. Desktop players can opt into `?q=high` or
   // `?q=ultra`, and the in-game quality menu still exposes every preset.
-  quality: 'low',
-  /** Level to build: 'street' (the full map) or 'box' (greybox arena). */
-  map: 'street',
+  quality: 'mobile',
+  /**
+   * Level to build. Defaults to the shoot house, NOT the street map: the street
+   * takes ~25 s to build and on a portal that is a bounce rather than a load.
+   * The greybox levels are up in about a second.
+   */
+  map: 'holdout',
   /** 'tdm' garrisons the level with enemy squads; 'sandbox' spawns none. */
-  mode: 'tdm',
+  mode: 'horde',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,

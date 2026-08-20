@@ -56,6 +56,14 @@ class Portal {
     this.ready = false;
     this._playing = false;
     this._readySent = false;
+    /** Enforces the portals' minimum gap between interstitials. */
+    this._lastAd = 0;
+    /**
+     * Supplied by main.js. `core` must not import `audio` or `ui`, so the
+     * mute-and-freeze that an ad requires is injected rather than reached for.
+     */
+    this.onPause = null;
+    this.onResume = null;
   }
 
   /** True when a real portal SDK is attached. */
@@ -132,6 +140,130 @@ class Portal {
     } catch (err) {
       console.warn('[portal] gameplayStop()', err);
     }
+  }
+
+  /**
+   * The language the portal wants the game in.
+   *
+   * Yandex requires the game to pick this up itself rather than asking; the
+   * value is on the environment object the SDK returns from init. CrazyGames has
+   * no equivalent, so the browser's own language stands in there.
+   *
+   * @returns {string|null} a two-letter code, or null to fall back to navigator
+   */
+  get lang() {
+    if (this.target === 'yandex') return this.sdk?.environment?.i18n?.lang ?? null;
+    return null;
+  }
+
+  /**
+   * Cross-device save slot. Both portals offer one and neither is localStorage:
+   * Yandex hangs it off a player object that must be fetched first, CrazyGames
+   * exposes a synchronous module that only exists once their SDK is up.
+   *
+   * Never throws and never rejects — a portal save is a mirror of localStorage
+   * (see save.js), so every failure here is survivable and none of them should
+   * be a branch the caller has to write.
+   */
+  async _player() {
+    if (this.target !== 'yandex' || !this.sdk) return null;
+    if (this._playerObj === undefined) {
+      try {
+        // `scopes: false` asks for storage WITHOUT forcing a login prompt, which
+        // Yandex certification treats as required-third-party-auth if it blocks.
+        this._playerObj = await this.sdk.getPlayer({ scopes: false });
+      } catch {
+        this._playerObj = null;
+      }
+    }
+    return this._playerObj;
+  }
+
+  /** @returns {Promise<any|null>} */
+  async getData(key) {
+    if (!this.sdk) return null;
+    try {
+      if (this.target === 'yandex') {
+        const p = await this._player();
+        const all = await p?.getData([key]);
+        return all?.[key] ?? null;
+      }
+      const raw = this.sdk.data?.getItem?.(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+      console.warn('[portal] getData()', err);
+      return null;
+    }
+  }
+
+  /** Fire-and-forget: the caller has already written to localStorage. */
+  setData(key, value) {
+    if (!this.sdk) return;
+    try {
+      if (this.target === 'yandex') {
+        this._player().then((p) => p?.setData({ [key]: value }, false)).catch(() => {});
+      } else {
+        this.sdk.data?.setItem?.(key, JSON.stringify(value));
+      }
+    } catch (err) {
+      console.warn('[portal] setData()', err);
+    }
+  }
+
+  /**
+   * Show an interstitial.
+   *
+   * Both portals require the game to go QUIET AND STILL for the duration — an
+   * ad playing over a live firefight with the game's own audio underneath is a
+   * certification failure on Yandex and a review rejection on CrazyGames. So
+   * this brackets the call with the same gameplayStop/Start the pause menu uses
+   * and mutes the master bus, and it restores both on every exit path including
+   * the error one. An ad that fails to open must not leave the game silent.
+   *
+   * `onPause`/`onResume` are supplied by main.js rather than reached for here,
+   * because `core` must not depend on `audio` or `ui`.
+   *
+   * @returns {Promise<boolean>} true if an ad was actually shown
+   */
+  async showInterstitial() {
+    if (!this.sdk) return false;
+    const now = Date.now();
+    /**
+     * Yandex rejects interstitials closer together than 60 s and CrazyGames
+     * asks for a similar gap. Enforcing it here rather than at the call sites
+     * means a new call site cannot get it wrong.
+     */
+    if (now - this._lastAd < 60000) return false;
+    this._lastAd = now;
+
+    this.onPause?.();
+    let shown = false;
+    try {
+      if (this.target === 'yandex') {
+        await new Promise((done) => {
+          this.sdk.adv.showFullscreenAdv({
+            callbacks: {
+              onOpen: () => { shown = true; },
+              onClose: () => done(),
+              onError: () => done(),
+            },
+          });
+        });
+      } else {
+        await new Promise((done) => {
+          this.sdk.ad.requestAd('midgame', {
+            adStarted: () => { shown = true; },
+            adFinished: () => done(),
+            adError: () => done(),
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('[portal] showInterstitial()', err);
+    } finally {
+      this.onResume?.();
+    }
+    return shown;
   }
 }
 

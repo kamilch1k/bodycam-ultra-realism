@@ -287,6 +287,14 @@ export class Minimap {
     this._pixels = null;
   }
 
+  /** Stop retrying a rejected bake and commit to the existing grid fallback. */
+  finishFallback() {
+    if (this.baked) return false;
+    this.bakeDone = true;
+    this._releaseGpu();
+    return true;
+  }
+
   /**
    * Height field -> stylised map bitmap.
    *

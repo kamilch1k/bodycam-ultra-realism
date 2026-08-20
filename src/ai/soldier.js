@@ -104,6 +104,158 @@ const GEAR = {
  * dragging every piece of its kit out of the albedo budget.
  */
 export const VARIANTS = {
+  /**
+   * GHOUL — the horde body.
+   *
+   * Built from the same rig as every soldier, because a second character
+   * pipeline is not worth one game mode. What changes is entirely tints and
+   * flags: grey-green skin, no helmet, no goggles, no plate carrier, so the
+   * silhouette reads as a person who is NOT kitted — which at a glance is the
+   * whole tell. Slightly under scale and over bulk so they look hunched.
+   *
+   * It RUSHES: `rush` swaps the cover-shooter branch of the behaviour tree for
+   * a straight charge and a claw at contact range (see Agent._rush). Before
+   * that it inherited the soldier tree wholesale, which sent it to a cover point
+   * 7-30 m from the player and held it there — measured at 2 of 21 ever
+   * reaching contact, the rest orbiting a 30-34 m ring.
+   */
+  ghoul: {
+    rush: true,
+    melee: { range: 2.1, damage: 13, interval: 1.05 },
+    /**
+     * LOUD ON PURPOSE. The original tints were desaturated greens and greys so
+     * the silhouette read as "a person who is not kitted" — good against the
+     * sand of holdout, invisible against Miami's pastels and the Zone's
+     * concrete, which are the two maps this mode now ships. A horde enemy has to
+     * be identifiable at a glance while it is sprinting at you, so this trades
+     * plausibility for contrast: vivid green skin against hot red rags, which
+     * exists nowhere in either level's palette.
+     */
+    camo: 'woodland',
+    clothTint: [0.86, 0.14, 0.17],
+    gearTint: [0.95, 0.42, 0.06],
+    plateTint: [0.74, 0.09, 0.24],
+    skinTint: [0.48, 0.97, 0.42],
+    helmet: false,
+    helmetCover: false,
+    helmetTint: [0.6, 0.6, 0.6],
+    goggles: false,
+    gogglesDown: false,
+    faceWrap: false,
+    beard: true,
+    kneePads: false,
+    fullCarrier: false,
+    weapon: 'carbine',
+    bulk: 1.12,
+    scale: 0.96,
+  },
+  /**
+   * BRUTE — the wall.
+   *
+   * Four times the health at two thirds the pace, so it cannot be ignored and
+   * cannot be outrun in a corridor, only around. It exists to stop the horde
+   * being one problem repeated: a ghoul is answered by turning and firing, a
+   * brute is answered by moving. Oversized and dark red so the threat reads
+   * from across the deck.
+   */
+  brute: {
+    rush: true,
+    health: 420,
+    rushSpeed: 3.1,
+    melee: { range: 2.9, damage: 34, interval: 1.5 },
+    camo: 'woodland',
+    clothTint: [0.34, 0.05, 0.08],
+    gearTint: [0.5, 0.12, 0.05],
+    plateTint: [0.28, 0.03, 0.09],
+    skinTint: [0.72, 0.3, 0.26],
+    helmet: false,
+    helmetCover: false,
+    helmetTint: [0.4, 0.4, 0.4],
+    goggles: false,
+    gogglesDown: false,
+    faceWrap: false,
+    beard: true,
+    kneePads: false,
+    fullCarrier: true,
+    weapon: 'carbine',
+    bulk: 1.6,
+    scale: 1.42,
+  },
+
+  /**
+   * RUNT — the swarm.
+   *
+   * Dies to a single hit and arrives faster than you can back up, which makes
+   * it the only variant that punishes standing still. Small and acid-yellow;
+   * the size difference is what tells you at a glance that this wave is about
+   * spacing rather than aim.
+   */
+  runt: {
+    rush: true,
+    health: 34,
+    rushSpeed: 7.4,
+    melee: { range: 1.7, damage: 7, interval: 0.7 },
+    camo: 'woodland',
+    clothTint: [0.95, 0.85, 0.1],
+    gearTint: [0.6, 0.55, 0.05],
+    plateTint: [0.8, 0.7, 0.08],
+    skinTint: [0.62, 0.95, 0.3],
+    helmet: false,
+    helmetCover: false,
+    helmetTint: [0.6, 0.6, 0.6],
+    goggles: false,
+    gogglesDown: false,
+    faceWrap: false,
+    beard: false,
+    kneePads: false,
+    fullCarrier: false,
+    weapon: 'carbine',
+    bulk: 0.82,
+    scale: 0.72,
+  },
+
+  /**
+   * FLATTY — a cardboard cut-out that sprints at you.
+   *
+   * Drawn as a billboard sprite (see billboard.js), so it has literally no
+   * thickness and never turns: strafing around one is the joke.
+   *
+   * SPEED IS THE WHOLE CHARACTER. At 5.8 it was slower than a sprinting player
+   * (6.1) — you could simply walk away from the joke, so it never landed. 9.6
+   * outruns sprint and edges tactical sprint (8.38), which is the Gmod fast-
+   * zombie read: you cannot disengage, you have to turn and deal with it.
+   * Lower this first if waves 3+ feel unfair; it is the only knob that matters.
+   *
+   * The `camo`/tint fields below are still read when the rig is built — the rig
+   * exists and is simply hidden, because physics needs its skeleton for the
+   * ragdoll on death.
+   */
+  flatty: {
+    rush: true,
+    billboard: true,
+    flatHeight: 1.95,
+    health: 70,
+    rushSpeed: 9.6,
+    melee: { range: 2.0, damage: 11, interval: 0.95 },
+    camo: 'woodland',
+    clothTint: [0.9, 0.9, 0.9],
+    gearTint: [0.9, 0.9, 0.9],
+    plateTint: [0.9, 0.9, 0.9],
+    skinTint: [1.0, 0.9, 0.8],
+    helmet: false,
+    helmetCover: false,
+    helmetTint: [0.6, 0.6, 0.6],
+    goggles: false,
+    gogglesDown: false,
+    faceWrap: false,
+    beard: false,
+    kneePads: false,
+    fullCarrier: false,
+    weapon: 'carbine',
+    bulk: 1.0,
+    scale: 1.0,
+  },
+
   vanguard: {
     camo: 'arid',
     clothTint: [1.03, 1.0, 0.94],

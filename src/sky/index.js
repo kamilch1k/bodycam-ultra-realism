@@ -99,8 +99,16 @@ const NIGHT_AMBIENT_HUE = [0.35, 0.5, 1.0];
  *                                elevation (+ is darker). `render` adds it to
  *                                settings.exposureBias.
  *   sky.cloudShadowAt(x, z)      0..1 direct sunlight reaching a ground point
- *   sky.setWeather({ ... })      coverage, cirrus, turbidity, fogDensity,
- *                                fogHeight, windSpeed, windAngle, shaftGain
+ *   sky.setWeather({ ... })      cloudCoverage, cloudDensity, cirrusCoverage,
+ *                                cirrusOpacity, turbidity, horizonMurk,
+ *                                windSpeed, windAngle, and the fog-only keys
+ *                                fogDensity, fogHeight, shaftGain.
+ *                                THESE NAMES MUST MATCH `this.weather` exactly:
+ *                                the patch is an Object.assign, so a typo is
+ *                                accepted in silence and does nothing. This
+ *                                line used to read "coverage, cirrus" and cost
+ *                                an afternoon of chasing a sky that would not
+ *                                change.
  *   sky.fog                      live fog tuning object (see _fog below)
  *
  * Events emitted on `ctx.events`:
@@ -138,6 +146,10 @@ export class SkySystem {
     this.timeRate = 0;
 
     // ---- weather / atmosphere state ---------------------------------------
+    // Scratch for hex -> linear conversion in _applyWeather (runs on a patch,
+    // not per frame, but there is no reason to allocate here either).
+    this._groundCol = new THREE.Color();
+
     this.weather = {
       /** Aerosol multiplier. 1 clear, 2-3 hazy, 5 dust storm. */
       turbidity: 1.35,
@@ -161,6 +173,19 @@ export class SkySystem {
       windSpeed: 0.0042, // km/s at the cloud deck (~4 m/s)
       windAngle: 0.7,
       horizonMurk: 0.13,
+      /**
+       * Everything below the horizon — the first bounce off the world outside
+       * the level, and the lower half of the IBL.
+       *
+       * It is a bigger part of the picture than it sounds. An arena is a slab
+       * with nothing modelled around it, so on any map without walls to the
+       * skyline (a rooftop, most obviously) this colour IS the entire backdrop
+       * in every direction, and at the default sand it is the "grey goo"
+       * surrounding a Miami deck that no amount of repainting the deck could
+       * fix. Accepts a hex or a THREE.Color; the default is the sand-and-lime
+       * town the photoreal maps sit in.
+       */
+      groundAlbedo: new THREE.Color(0.33, 0.29, 0.225),
     };
 
     /**
@@ -246,6 +271,8 @@ export class SkySystem {
       // Lower hemisphere of the IBL. This town is sand and lime plaster, not
       // asphalt: a 0.32 warm albedo is both correct for the setting and the
       // only warm fill a shaded alley gets once the sun is off it.
+      // Live value; the authored one is weather.groundAlbedo, applied by
+      // _applyWeather so a map can change what lies outside it.
       uGroundAlbedo: { value: new THREE.Vector3(0.33, 0.29, 0.225) },
       uHorizonMurk: { value: this.weather.horizonMurk },
       // Sky highlight roll-off: knee in scene radiance, overshoot room above it.
@@ -357,6 +384,19 @@ export class SkySystem {
     this._cloudTime = 0;
     this._occParams = { coverage: 0, density: 0, windX: 0, windZ: 0, time: 0 };
 
+    /**
+     * The authored defaults, kept so a level can be loaded without inheriting
+     * the last one's sky.
+     *
+     * `weather` and `_fog` are long-lived mutable objects and setWeather is a
+     * patch, so without this any map that simply omits a weather block silently
+     * keeps whatever the previous map set — load Miami with its cleared cloud
+     * and zero fog, then load a map that expects overcast, and it renders under
+     * Miami's sky. Same failure mode as the render exposure bias.
+     */
+    this._weather0 = { ...this.weather };
+    this._fog0 = { ...this._fog };
+
     this._applyWeather();
     this._applyFog();
     this.setTimeOfDay(this.hour);
@@ -422,6 +462,22 @@ export class SkySystem {
   setTimeRate(hoursPerSecond) {
     this.timeRate = hoursPerSecond || 0;
     return this;
+  }
+
+  /**
+   * Restore the authored defaults, then apply `patch` on top.
+   *
+   * What a level wants is "this sky", not "the last sky plus my changes" — so
+   * this is what a map load should call, and setWeather stays the incremental
+   * one for a weather system or a debug tweak.
+   */
+  setWeatherFrom(patch = {}) {
+    Object.assign(this.weather, this._weather0);
+    Object.assign(this._fog, this._fog0);
+    // Turbidity is spelled out even when the patch omits it, because setWeather
+    // only rebakes the static LUTs when it sees that key — and restoring the
+    // default may well have just changed it.
+    return this.setWeather({ turbidity: this.weather.turbidity, ...patch });
   }
 
   setWeather(patch = {}) {
@@ -513,6 +569,11 @@ export class SkySystem {
     const w = this.weather;
     this.shared.uMieScale.value = w.turbidity;
     this.shared.uHorizonMurk.value = w.horizonMurk;
+    // A hex here is authored sRGB and THREE.Color converts it; a Color is taken
+    // as already-linear, which is what the defaults above are written as.
+    const g = w.groundAlbedo;
+    const gc = g?.isColor ? g : this._groundCol.set(g ?? 0);
+    this.shared.uGroundAlbedo.value.set(gc.r, gc.g, gc.b);
     const cp = this.shared.uCloudParams.value;
     cp.x = w.cloudCoverage;
     cp.y = w.cloudDensity;

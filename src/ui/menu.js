@@ -1,34 +1,5 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
-import { OPTIC_ORDER } from '../weapons/optics.js';
-import { MUZZLE_ORDER } from '../weapons/muzzles.js';
-import { MAG_ORDER } from '../weapons/mags.js';
-import { STOCK_ORDER } from '../weapons/stocks.js';
-import { SKIN_ORDER, SKINS } from '../weapons/skins.js';
-
-/** Short labels for the segmented control; full names live in stocks.js. */
-const STOCK_LABELS = { collapsed: 'short', standard: 'std', extended: 'long' };
-
-/** Short labels for the segmented control; full names live in mags.js. */
-const MAG_LABELS = { short: 'short', std: 'std', ext: 'ext' };
-
-/** Short labels for the segmented control; full names live in muzzles.js. */
-const MUZZLE_LABELS = {
-  bare: 'bare',
-  a2: 'a2',
-  brake: 'brake',
-  comp: 'comp',
-  can: 'can',
-  trilug: 'trilug',
-};
-
-/** Short enough to fit a segmented control; the full names live in optics.js. */
-const OPTIC_LABELS = {
-  irons: 'irons',
-  reddot: 'dot',
-  okp7: 'okp-7',
-  acog: '4x',
-  vari: '1-6x',
-};
+import { t } from '../core/i18n.js';
 
 const PRESETS = ['low', 'medium', 'high', 'ultra'];
 
@@ -66,8 +37,7 @@ export class PauseMenu {
     this.root = el('div', 'ow-menu', parent);
     const inner = el('div', 'ow-menu-inner', this.root);
 
-    const h = el('h1', null, inner, 'Paused');
-    h.textContent = 'PAUSED';
+    el('h1', null, inner, t('menu.paused'));
     el('div', 'sub', inner, 'BODYCAM — ULTRA REALISM');
     el('div', 'rule', inner);
 
@@ -84,89 +54,12 @@ export class PauseMenu {
       this.qBtns.push(b);
     }
 
-    // ---- optic ------------------------------------------------------------
     /**
-     * In-match gunsmith, such as it is. Nothing is rebuilt when you pick a
-     * sight — every optic was built at load and this flips which one is visible
-     * (see weapons/optics.js), so it is safe to change mid-firefight.
-     *
-     * Fitted to the weapon in your hands, not to a loadout slot: swap to the
-     * SMG and this row follows it.
+     * The optic, muzzle, magazine, stock and finish rows used to live here,
+     * between the shadow toggle and the sensitivity slider. They are the game's
+     * whole progression economy now and they have their own screen — see
+     * ui/gunsmith.js, bound to B. What is left in this menu is settings.
      */
-    this.opticRow = this._row('Optic');
-    this.opticSeg = el('div', 'ow-seg', this.opticRow);
-    this.opticBtns = [];
-    for (const id of OPTIC_ORDER) {
-      const b = el('button', null, this.opticSeg, OPTIC_LABELS[id]);
-      b.type = 'button';
-      b.addEventListener('click', () => {
-        this.ctx.peek('weapons')?.setOptic?.(id);
-        this.syncFromConfig();
-      });
-      this.opticBtns.push([b, id]);
-    }
-    this.opticNote = el('div', 'val', this.opticRow, '');
-
-    // ---- muzzle device ----------------------------------------------------
-    // Same build-all/toggle scheme as the optic; the note shows how far the
-    // fitted device carries, because that is the stat the choice is about.
-    this.muzzleRow = this._row('Muzzle');
-    const mSeg = el('div', 'ow-seg', this.muzzleRow);
-    this.muzzleBtns = [];
-    for (const id of [...MUZZLE_ORDER, 'trilug']) {
-      const b = el('button', null, mSeg, MUZZLE_LABELS[id]);
-      b.type = 'button';
-      b.addEventListener('click', () => {
-        this.ctx.peek('weapons')?.setMuzzle?.(id);
-        this.syncFromConfig();
-      });
-      this.muzzleBtns.push([b, id]);
-    }
-    this.muzzleNote = el('div', 'val', this.muzzleRow, '');
-
-    // ---- magazine ---------------------------------------------------------
-    this.magRow = this._row('Magazine');
-    const gSeg = el('div', 'ow-seg', this.magRow);
-    this.magBtns = [];
-    for (const id of MAG_ORDER) {
-      const b = el('button', null, gSeg, MAG_LABELS[id]);
-      b.type = 'button';
-      b.addEventListener('click', () => {
-        this.ctx.peek('weapons')?.setMag?.(id);
-        this.syncFromConfig();
-      });
-      this.magBtns.push([b, id]);
-    }
-    this.magNote = el('div', 'val', this.magRow, '');
-
-    // ---- stock ------------------------------------------------------------
-    this.stockRow = this._row('Stock');
-    const sSeg = el('div', 'ow-seg', this.stockRow);
-    this.stockBtns = [];
-    for (const id of STOCK_ORDER) {
-      const b = el('button', null, sSeg, STOCK_LABELS[id]);
-      b.type = 'button';
-      b.addEventListener('click', () => {
-        this.ctx.peek('weapons')?.setStock?.(id);
-        this.syncFromConfig();
-      });
-      this.stockBtns.push([b, id]);
-    }
-    this.stockNote = el('div', 'val', this.stockRow, '');
-
-    // ---- skin -------------------------------------------------------------
-    this.skinRow = this._row('Finish');
-    const kSeg = el('div', 'ow-seg', this.skinRow);
-    this.skinBtns = [];
-    for (const id of SKIN_ORDER) {
-      const b = el('button', null, kSeg, SKINS[id].label);
-      b.type = 'button';
-      b.addEventListener('click', () => {
-        this.ctx.peek('weapons')?.setSkin?.(id);
-        this.syncFromConfig();
-      });
-      this.skinBtns.push([b, id]);
-    }
 
     // ---- advanced graphics ------------------------------------------------
     /**
@@ -255,9 +148,38 @@ export class PauseMenu {
 
     // ---- buttons ---------------------------------------------------------
     const btns = el('div', 'ow-btns', inner);
-    this.resumeBtn = el('button', 'ow-btn primary', btns, 'Resume');
+    this.resumeBtn = el('button', 'ow-btn primary', btns, t('menu.resume'));
     this.resumeBtn.type = 'button';
     this.resumeBtn.addEventListener('click', () => this.close());
+    // Mouse-only route to the loadout, for a player who never learns the B key.
+    // `onLoadout` is injected by UiSystem — the menu must not reach across to a
+    // sibling screen itself.
+    const loadout = el('button', 'ow-btn', btns, t('menu.loadout'));
+    loadout.type = 'button';
+    loadout.addEventListener('click', () => this.onLoadout?.());
+    /**
+     * EXIT TO MENU — a navigation, not a teardown.
+     *
+     * Disposing the engine and re-showing the front end in place would be the
+     * elegant version and is not worth the risk: every subsystem would have to
+     * release its GPU resources perfectly or the second boot leaks a context.
+     * Navigating to the bare path re-runs the whole load, which the menu is
+     * already built to cover, and drops any `?map=`/`?mode=` so the front end
+     * actually appears instead of being skipped.
+     *
+     * The session is banked first — `pagehide` fires on navigation, but relying
+     * on that ordering to save a career is how a career gets lost.
+     */
+    const exit = el('button', 'ow-btn', btns, t('menu.exit'));
+    exit.type = 'button';
+    exit.addEventListener('click', () => {
+      try {
+        this.ctx.events?.emit('session:bank');
+      } catch {
+        /* a save that fails must not trap the player in the match */
+      }
+      location.href = location.pathname;
+    });
     const reset = el('button', 'ow-btn', btns, 'Defaults');
     reset.type = 'button';
     reset.addEventListener('click', () => {
@@ -350,53 +272,6 @@ export class PauseMenu {
     for (let i = 0; i < this.qBtns.length; i++)
       this.qBtns[i].classList.toggle('on', PRESETS[i] === cfg.quality);
     for (const [b, v] of this.invBtns) b.classList.toggle('on', !!cfg.invertY === v);
-    const wp = this.ctx.peek('weapons');
-    const fitted = wp?.opticId ?? null;
-    for (const [b, id] of this.opticBtns ?? []) {
-      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.optics?.[id];
-      b.classList.toggle('on', fitted === id);
-      b.disabled = !has;
-      setStyle(b, 'opacity', has ? '' : '0.35');
-    }
-    if (this.opticNote) {
-      const range = wp?.opticMagRange;
-      setText(
-        this.opticNote,
-        range ? `${wp.adsMagnification.toFixed(1)}x · wheel` : ''
-      );
-    }
-    const fittedM = wp?.muzzleId ?? null;
-    for (const [b, id] of this.muzzleBtns ?? []) {
-      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.muzzles?.[id];
-      b.classList.toggle('on', fittedM === id);
-      b.disabled = !has;
-      setStyle(b, 'opacity', has ? '' : '0.35');
-    }
-    if (this.muzzleNote) setText(this.muzzleNote, wp?.muzzle ? `heard ${wp.muzzle.loudness} m` : '');
-    const fittedG = wp?.magId ?? null;
-    for (const [b, id] of this.magBtns ?? []) {
-      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.mags?.[id];
-      b.classList.toggle('on', fittedG === id);
-      b.disabled = !has;
-      setStyle(b, 'opacity', has ? '' : '0.35');
-    }
-    if (this.magNote) {
-      const g = wp?.magSpec;
-      setText(this.magNote, g ? `${g.rounds} rds · reload x${g.reload.toFixed(2)}` : '');
-    }
-    const fittedS = wp?.stockId ?? null;
-    for (const [b, id] of this.stockBtns ?? []) {
-      const has = !!wp?.viewmodel?.weapons.get(wp.activeId)?.stocks?.[id];
-      b.classList.toggle('on', fittedS === id);
-      b.disabled = !has;
-      setStyle(b, 'opacity', has ? '' : '0.35');
-    }
-    if (this.stockNote) {
-      const st = wp?.stockSpec;
-      setText(this.stockNote, st ? `recoil x${st.recoil.toFixed(2)}` : '');
-    }
-    const fittedK = wp?.skinId ?? 'black';
-    for (const [b, id] of this.skinBtns ?? []) b.classList.toggle('on', fittedK === id);
     for (const f of this.featBtns ?? []) {
       const st = this._featureState(f.key);
       for (const [b, v] of f.pair) {
@@ -423,10 +298,10 @@ export class PauseMenu {
     // must land on the setting, not be swallowed by a re-lock.
     if (this.ctx.input) this.ctx.input.lockSuppressed = true;
     document.exitPointerLock?.();
-    const t = this.ctx.time;
-    if (t) {
-      this._prevScale = t.scale;
-      t.scale = 0;
+    const time = this.ctx.time;
+    if (time) {
+      this._prevScale = time.scale;
+      time.scale = 0;
     }
     this.ctx.peek('player')?.setControlEnabled?.(false);
     this.ctx.events.emit('ui:pause', { paused: true });
@@ -435,8 +310,8 @@ export class PauseMenu {
   close() {
     if (!this.open) return;
     this.open = false;
-    const t = this.ctx.time;
-    if (t) t.scale = this._prevScale ?? 1;
+    const time = this.ctx.time;
+    if (time) time.scale = this._prevScale ?? 1;
     this.ctx.peek('player')?.setControlEnabled?.(true);
     if (this.ctx.input) this.ctx.input.lockSuppressed = false;
     this.ctx.input?.requestPointerLock?.();

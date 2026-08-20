@@ -93,6 +93,7 @@ try {
     (args.map ? `&map=${encodeURIComponent(args.map)}` : '') +
     (args.mode ? `&mode=${encodeURIComponent(args.mode)}` : '') +
     (args.skin ? `&skin=${encodeURIComponent(args.skin)}` : '') +
+    (args.glove ? `&glove=${encodeURIComponent(args.glove)}` : '') +
     (args.muzzle ? `&muzzle=${encodeURIComponent(args.muzzle)}` : '') +
     (args.mag ? `&mag=${encodeURIComponent(args.mag)}` : '') +
     (args.stock ? `&stock=${encodeURIComponent(args.stock)}` : '') +

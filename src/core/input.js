@@ -23,6 +23,9 @@ export const ACTIONS = {
   swapWeapon: ['Digit1', 'Digit2', 'Tab'],
   grenade: ['KeyG'],
   flashlight: ['KeyT'],
+  // B for the gunsmith — the buy/loadout key every shooter player already has in
+  // their hand. G was taken by grenades.
+  loadout: ['KeyB'],
   pause: ['Escape'],
 };
 
@@ -44,6 +47,10 @@ export class Input {
     this._pendingWheel = 0;
 
     this.pointerLocked = false;
+    /** True for exactly one move event after a lock — see _onMouseMove. */
+    this._freshLock = false;
+    /** How often the per-frame look clamp has fired. Read by controls-check. */
+    this.lookClamped = 0;
     /**
      * Set while a menu owns the cursor. The click that re-acquires pointer lock
      * is a CONVENIENCE for getting back into the game, and it has to be off
@@ -53,12 +60,27 @@ export class Input {
      * input that opened it.
      */
     this.lockSuppressed = false;
+    /**
+     * True on the touch build. Pointer lock is meaningless without a cursor and
+     * on mobile Safari/Chrome the request either no-ops or throws, so it is
+     * refused outright rather than being suppressed — `lockSuppressed` is the
+     * menu's temporary flag and gets cleared when the menu closes.
+     */
+    this.touchMode = false;
     this.enabled = true;
     /** Set true by capture mode so scripted shots aren't fought by real input. */
     this.frozen = false;
 
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
+    /**
+     * Touch movement, kept SEPARATE from `stick` on purpose: `_pollGamepad`
+     * zeroes the stick every frame when no pad is present, which would wipe a
+     * thumb's input on the very next poll. Touch look does not live here — it
+     * goes straight into `_rawLook`, so it is a mouse delta by the time anything
+     * downstream sees it. See core/touch.js.
+     */
+    this.touch = { moveX: 0, moveY: 0 };
 
     this._bound = {
       keydown: this._onKeyDown.bind(this),
@@ -98,7 +120,7 @@ export class Input {
   }
 
   requestPointerLock() {
-    if (this.lockSuppressed) return;
+    if (this.lockSuppressed || this.touchMode) return;
     // Chrome returns a promise that rejects if the document is not eligible
     // (headless capture, an iframe, a lock request too soon after an exit).
     // An unhandled rejection there shows up as a page error in the harness, so
@@ -144,6 +166,18 @@ export class Input {
 
   _onMouseMove(e) {
     if (!this.enabled || !this.pointerLocked || this.frozen) return;
+    /**
+     * DROP the first move after a lock. Chrome reports the jump from wherever
+     * the cursor was sitting to the centre of the screen as one movementX/Y
+     * pair, so re-entering the game after Esc or a tab-switch used to whip the
+     * view by however far the mouse happened to be from centre — a "random"
+     * rotation that is really the browser telling the truth about a jump the
+     * player never made.
+     */
+    if (this._freshLock) {
+      this._freshLock = false;
+      return;
+    }
     // movementX/Y is already relative and unaffected by cursor clamping.
     this._rawLook.x += e.movementX ?? 0;
     this._rawLook.y += e.movementY ?? 0;
@@ -155,7 +189,9 @@ export class Input {
   }
 
   _onLockChange() {
+    const was = this.pointerLocked;
     this.pointerLocked = document.pointerLockElement === this.canvas;
+    if (this.pointerLocked && !was) this._freshLock = true;
     if (!this.pointerLocked) this._onBlur();
   }
 
@@ -166,7 +202,8 @@ export class Input {
     this._rawLook.y = 0;
   }
 
-  beginFrame() {
+  /** `dt` sizes the look clamp; defaults to a 60 Hz frame when called by hand. */
+  beginFrame(dt = 1 / 60) {
     this._pressed.clear();
     this._released.clear();
 
@@ -181,6 +218,32 @@ export class Input {
     }
     this._pendingDown.clear();
     this._pendingUp.clear();
+
+    /**
+     * Cap one frame's worth of pointer delta, as an angular RATE.
+     *
+     * The first version of this was a flat 2000 counts, chosen to be generous.
+     * At the default sensitivity that is 4.4 radians — 252 degrees in a single
+     * frame, comfortably enough to slam pitch into its limit and leave the
+     * player staring at the sky, which is the reported symptom. A cap that
+     * permits the bug is not a cap.
+     *
+     * A rate scales with the frame instead: a long frame legitimately pools more
+     * mouse movement than a short one, so the budget grows with it, while any
+     * single frame stays bounded. 72 rad/s allows roughly 69 degrees at 60 fps —
+     * a genuine fast flick still passes, spread over the two or three frames a
+     * real flick actually takes — and the 2.5 rad ceiling stops a long hitch from
+     * handing back a full spin at once.
+     */
+    const maxRad = Math.min(2.5, 72 * Math.max(dt, 1 / 120));
+    const MAX_COUNTS = maxRad / (this.config.sensitivity || 0.0022);
+    const mag = Math.hypot(this._rawLook.x, this._rawLook.y);
+    if (mag > MAX_COUNTS) {
+      const k = MAX_COUNTS / mag;
+      this._rawLook.x *= k;
+      this._rawLook.y *= k;
+      this.lookClamped++;
+    }
 
     const s = this.config.sensitivity;
     this.look.x = this.frozen ? 0 : this._rawLook.x * s;
@@ -256,8 +319,9 @@ export class Input {
   moveVector(out = { x: 0, y: 0 }) {
     let x = (this.action('right') ? 1 : 0) - (this.action('left') ? 1 : 0);
     let y = (this.action('forward') ? 1 : 0) - (this.action('back') ? 1 : 0);
-    x += this.stick.moveX;
-    y -= this.stick.moveY;
+    x += this.stick.moveX + this.touch.moveX;
+    // Screen down is +y for both a stick and a thumb; forward is -y.
+    y -= this.stick.moveY + this.touch.moveY;
     const len = Math.hypot(x, y);
     if (len > 1) {
       x /= len;

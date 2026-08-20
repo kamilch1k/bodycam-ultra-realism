@@ -240,6 +240,77 @@ const CSS = `
    sideways into another. Rows are explicit grids with an 8px gutter; the
    equipment counts get their own row above the weapon name rather than sharing
    the head row, which is what used to collide. */
+/* Level-up roll — directly under the compass, centred.
+   The top offset clears the compass (0.7 pad + 41px tape) with a small gap.
+   Explicitly pointer-events:none: this is a readout during live play, and it
+   sits over the middle of the screen where the player is aiming.
+   NOTE: no backticks anywhere in this file. It is one big JS template literal,
+   so a backtick in a CSS comment ends the string and the build fails. */
+.ow-roll {
+  position:absolute; left:50%; top: calc(var(--pad) * .7 + 52px * var(--k));
+  transform: translateX(-50%);
+  width: calc(300px * var(--k));
+  text-align:center; pointer-events:none;
+  transition: opacity .18s linear;
+}
+.ow-roll-tag {
+  font: 700 calc(10px * var(--k))/1 var(--ow-font);
+  letter-spacing:.16em; color:#ffc23a;
+  text-shadow:0 1px 3px rgba(0,0,0,.9);
+}
+.ow-roll-name {
+  font: 800 calc(19px * var(--k))/1.15 var(--ow-font);
+  letter-spacing:.03em; color:#fff;
+  text-shadow:0 2px 6px rgba(0,0,0,.95);
+  margin-top: calc(3px * var(--k));
+}
+.ow-roll-sub {
+  font: 600 calc(11px * var(--k))/1.2 var(--ow-font);
+  color:rgba(255,255,255,.82);
+  text-shadow:0 1px 4px rgba(0,0,0,.9);
+  margin-top: calc(2px * var(--k));
+  min-height: calc(13px * var(--k));
+}
+/* The drop-in, and the punch when the reel locks. Transform-only so neither
+   animation costs a layout while the game is running underneath. */
+@keyframes ow-roll-in { from { transform:translateY(calc(-7px * var(--k))); opacity:0 } to { transform:none; opacity:1 } }
+.ow-roll-in { animation: ow-roll-in .2s ease-out both; }
+@keyframes ow-roll-hit { 0% { transform:scale(1.18) } 60% { transform:scale(.98) } 100% { transform:none } }
+.ow-roll-hit .ow-roll-name { animation: ow-roll-hit .3s ease-out both; color:#ffd76a; }
+
+/* Survivor readout — bottom left, mirroring the ammo panel opposite it. */
+.ow-surv {
+  position:absolute; left:var(--pad); bottom:var(--pad);
+  width: calc(168px * var(--k));
+  line-height:1;
+}
+.ow-surv-head {
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom: calc(5px * var(--k));
+}
+.ow-surv-lvl {
+  font-size: calc(15px * var(--k)); letter-spacing:.16em;
+  color:rgba(255,255,255,.95); text-shadow:0 1px 3px rgba(0,0,0,.7);
+}
+.ow-surv-kills {
+  font-size: calc(9.5px * var(--k)); letter-spacing:.12em;
+  color:rgba(255,255,255,.5); text-shadow:0 1px 3px rgba(0,0,0,.7);
+}
+.ow-surv-track {
+  height: calc(4px * var(--k));
+  background:rgba(0,0,0,.45);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+  margin-bottom: calc(4px * var(--k));
+  overflow:hidden;
+  transition:opacity .25s ease;
+}
+.ow-surv-fill {
+  height:100%; width:0%;
+  background:rgba(255,255,255,.9);
+}
+/* Armour is the one coloured thing here, so a plate is unmistakable. */
+.ow-surv-armor .ow-surv-fill { background:#5ad1ff; }
+
 .ow-ammo {
   position:absolute; right:var(--pad); bottom:var(--pad);
   --ammo-w: calc(168px * var(--k));
@@ -584,8 +655,13 @@ const CSS = `
 }
 .ow-banner-t {
   font-family: var(--fd);
-  font-size: calc(30px * var(--k)); letter-spacing:.3em; font-weight:700;
-  text-shadow: var(--sh-o2);
+  font-size: calc(44px * var(--k)); letter-spacing:.3em; font-weight:700;
+  /* Pure red, no outline: the scrim behind (::before) is what seats the type
+     against a blown sky, so the outline was doing the same job twice and only
+     muddying the edges. Bare glow instead — it lifts without thickening, and a
+     red glow on a red face keeps the edge clean rather than haloing it pink. */
+  color: #ff0000;
+  text-shadow: 0 0 calc(18px * var(--k)) rgba(255,0,0,.45);
 }
 .ow-banner-s {
   margin-top: calc(var(--u) * 1.4);
@@ -643,6 +719,14 @@ const CSS = `
 .ow-seg button:last-child { border-right:1px solid var(--hair); }
 .ow-seg button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
 .ow-seg button.on { color:#0b0d0f; background: var(--ink); }
+/* Career-locked attachment: readable, obviously inert, and it keeps its width so
+   unlocking something never reflows the row it sits in. */
+.ow-seg button.locked { opacity:.34; cursor:not-allowed; }
+.ow-seg button.locked:hover { color: var(--ink-2); background: rgba(255,255,255,.03); }
+.ow-seg button.locked::after {
+  content:''; position:absolute; left:12%; right:12%; top:50%; height:1px;
+  background: var(--ink-2); opacity:.7;
+}
 .ow-slider { position:relative; width: calc(190px * var(--k)); height: calc(18px * var(--k)); }
 .ow-slider .track {
   position:absolute; left:0; right:0; top:50%; height: calc(2px * var(--k));
@@ -661,7 +745,13 @@ const CSS = `
   position:absolute; inset:0; width:100%; height:100%; margin:0;
   appearance:none; background:transparent; cursor:pointer; opacity:0;
 }
-.ow-btns { margin-top: calc(var(--u) * 5); display:flex; gap: calc(var(--u) * 2.5); }
+/* WRAP. Five buttons at English widths just fit; the Russian labels are longer
+   ("ПРОДОЛЖИТЬ", "ОРУЖЕЙНАЯ") and pushed the last one off the panel edge, where
+   the panel's overflow rule clipped its text to nothing. A row of actions must
+   never depend on how long a translation happens to be.
+   (No backticks in here: this whole stylesheet is a JS template literal.) */
+.ow-btns { margin-top: calc(var(--u) * 5); display:flex; flex-wrap:wrap;
+  gap: calc(var(--u) * 2.5); }
 .ow-btn {
   appearance:none; border:1px solid var(--hair); background: rgba(255,255,255,.04);
   color: var(--ink); font-family: var(--ff); font-weight:600; text-transform:uppercase;
@@ -677,8 +767,142 @@ const CSS = `
   letter-spacing:.2em; color: var(--ink-3);
 }
 
+/* ============================================================== gunsmith */
+/* Scrim is a LEFT-WEIGHTED gradient, not a flat wash: the panel needs contrast
+   to read against, but the right third of the screen is where the viewmodel is
+   and darkening that would hide the thing being chosen. */
+.ow-gun {
+  position:absolute; inset:0; pointer-events:auto;
+  background: linear-gradient(100deg, rgba(3,5,7,.94) 0%, rgba(3,5,7,.86) 38%,
+                              rgba(3,5,7,.34) 66%, rgba(3,5,7,.06) 100%);
+  opacity:0; will-change: opacity;
+}
+.ow-gun-inner {
+  position:absolute; left: calc(var(--u) * 12); top:50%;
+  transform: translateY(-50%);
+  /* Wide enough for the muzzle row — six buttons AND its stat note. At 470 the
+     note was pushed past the panel edge and clipped by the overflow rule. */
+  width: calc(600px * var(--k));
+  max-height: calc(100% - var(--u) * 6);
+  overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain;
+  scrollbar-width:thin; scrollbar-color: var(--ink-3) transparent;
+  padding-left: calc(var(--u) * 4.5);
+  border-left: calc(2px * var(--k)) solid var(--amber);
+}
+.ow-gun h1 {
+  font-family: var(--fd);
+  font-size: calc(34px * var(--k)); font-weight:700; letter-spacing:.28em;
+  text-shadow: 0 2px 6px rgba(0,0,0,.8);
+}
+.ow-gun-sub {
+  margin-top: calc(var(--u) * 1.2); font-size: calc(11px * var(--k));
+  letter-spacing:.24em; color: var(--amber); text-transform:uppercase;
+}
+.ow-gun .rule {
+  margin: calc(var(--u) * 3) 0 calc(var(--u) * 2); height:1px;
+  background: linear-gradient(to right, rgba(255,255,255,.28), rgba(255,255,255,0));
+}
+.ow-gun-career {
+  font-size: calc(11px * var(--k)); letter-spacing:.14em; color: var(--ink-2);
+  padding: calc(var(--u) * 1.6) 0 calc(var(--u) * 2);
+}
+/* A slot with many parts plus a stat note can still run out of line at a small
+   --k. Wrapping drops the note under the buttons instead of clipping it. */
+.ow-gun .ow-row { flex-wrap: wrap; }
+.ow-gun .ow-row > .val { margin-left: auto; }
+.ow-gun .hint {
+  margin-top: calc(var(--u) * 3); font-size: calc(9.5px * var(--k));
+  letter-spacing:.2em; color: var(--ink-3);
+}
+
 /* ============================================================== fadeouts */
 .ow-hidden { display:none !important; }
+
+/* ============================================================ responsive
+ *
+ * Both portals check this and both check it the same way. Yandex: "the active
+ * area doesn't go beyond the screen area, no elements are cut off", and no
+ * disproportional deformation when the device rotates. CrazyGames: text and
+ * images legible at devicePixelRatio 1, on responsive 16x9 iframe sizes AND on
+ * phone screens.
+ *
+ * The --k scale alone cannot satisfy that, because it is one number: it makes
+ * everything smaller together, and past a point "smaller together" means the
+ * labels stop being readable while the minimap still eats half the screen. So
+ * the scale keeps a legibility floor (see ui/index.js resize) and the pieces
+ * that are too big at that floor are re-laid-out here per breakpoint.
+ *
+ * Breakpoints are on the VIEWPORT, not the device: a 900x506 CrazyGames iframe
+ * on a desktop has exactly the same problem as a phone in landscape, and gets
+ * exactly the same treatment.
+ */
+
+/* Notches and rounded corners. Landscape is the orientation this game locks to,
+   so left/right are the insets that actually bite; taking the max of the two
+   keeps the HUD symmetrical instead of drifting when the notch is on one side. */
+.ow-hud {
+  --pad: calc(var(--u) * 6.5 + max(env(safe-area-inset-left), env(safe-area-inset-right)));
+}
+
+/* The settings list is taller than a phone in landscape. Without this it simply
+   ran off both ends of the screen with no way to reach either — the single most
+   direct way to fail Yandex's "no elements are cut off". */
+.ow-menu-inner {
+  max-height: calc(100% - var(--u) * 6);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-3) transparent;
+}
+
+/* Short viewport: phone in landscape, or a small embedded iframe. */
+@media (max-height: 620px) {
+  .ow-minimap { width: calc(104px * var(--k)); height: calc(104px * var(--k)); }
+  .ow-compass { width: calc(300px * var(--k)); }
+  .ow-menu h1, .ow-gun h1 { font-size: calc(26px * var(--k)); letter-spacing:.2em; }
+  .ow-menu .sub { display:none; }
+  .ow-menu .rule, .ow-gun .rule { margin: calc(var(--u) * 2) 0 calc(var(--u) * 1); }
+  .ow-gun .hint, .ow-gun-career { padding-block: calc(var(--u) * .8); }
+  .ow-row { padding: calc(var(--u) * 1.6) 0; }
+  .ow-btns { margin-top: calc(var(--u) * 2.5); }
+}
+
+/* Narrow viewport: the menu's fixed 430px column plus its 88px left indent does
+   not fit, so it becomes a full-bleed sheet instead of a floating panel. */
+@media (max-width: 860px) {
+  .ow-menu-inner, .ow-gun-inner {
+    left: var(--pad); right: var(--pad); width: auto;
+    padding-left: calc(var(--u) * 2.5);
+  }
+  /* Full width means the panel now covers the viewmodel, so the scrim may as
+     well be even — a one-sided gradient over a hidden gun just looks lopsided. */
+  .ow-gun { background: rgba(3,5,7,.92); }
+  .ow-row { gap: calc(var(--u) * 2); }
+  .ow-slider { width: calc(130px * var(--k)); }
+}
+
+/* Very narrow: label and control stop fitting on one line at any font size that
+   is still readable, so the row stacks instead of squeezing. */
+@media (max-width: 560px) {
+  .ow-row { flex-wrap: wrap; gap: calc(var(--u) * 1.2); }
+  .ow-row > .name { width: 100%; }
+  .ow-seg { flex-wrap: wrap; }
+  .ow-killfeed { max-width: 62vw; }
+}
+
+/* Touch: every control the finger has to hit gets a 44px minimum box, which is
+   the floor both Apple and Google publish and well under what the segmented
+   controls were giving (about 26px tall at k=1). */
+@media (pointer: coarse) {
+  .ow-seg button {
+    min-height: 44px; font-size: calc(12px * var(--k));
+    padding: calc(var(--u) * 1.6) calc(var(--u) * 2.6);
+  }
+  .ow-btn { min-height: 44px; font-size: calc(12px * var(--k)); }
+  .ow-slider { height: 44px; }
+  .ow-slider input { height: 44px; }
+}
 `;
 
 const DEFS = `

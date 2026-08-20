@@ -9,7 +9,93 @@
  * `surface` is the ARCHITECTURE.md physics/FX tag. `tint` is a linear multiply
  * on the baked albedo, so values stay inside 0.02–0.9 reflectance.
  */
+import * as THREE from 'three';
+
+/**
+ * Mean linear albedo of the baked plaster surface.
+ *
+ * surfaces-arch.js builds plaster from sRGB(0.598, 0.578, 0.538) mixed toward a
+ * warm and a grey, i.e. about 0.316 linear, and shader.js applies the tint as
+ * the LAST thing it does: `alb.rgb *= owTintCol`. A tint is therefore a pure
+ * multiply on a mid-grey base and can only ever DARKEN it — 0xf2efe9 (0.88
+ * linear) lands at 0.88 * 0.316 = 0.28, which is concrete. That is why every
+ * attempt to fix "the walls are grey" by picking a whiter hex changed nothing:
+ * no hex reaches white through a 0.316 multiply, because none exceeds 1.
+ */
+const PLASTER_ALBEDO = 0.316;
+
+/**
+ * A tint that makes the surface actually READ as `hex`.
+ *
+ * Divides out the base albedo, so the painted result is the colour asked for
+ * rather than the colour asked for times a grey. The returned components are
+ * >1 on purpose — this is a gain, not a colour, and `col()` in shader.js passes
+ * a THREE.Color straight through without clamping (only the hex path does the
+ * sRGB conversion). `lift` trims the top: the plaster's own light/dark trowel
+ * variation rides on top of this, so 0.9 keeps the brightest patches under 1.0
+ * instead of clipping them flat and losing the texture.
+ */
+const paint = (hex, lift = 0.9) =>
+  new THREE.Color(hex).multiplyScalar(lift / PLASTER_ALBEDO);
+
 export const PALETTE = {
+  /* ------------------------------------------------------------- neon city --
+   * SATURATED ON PURPOSE, and the only entries here that are.
+   *
+   * Everything below this block is photoreal architectural tint — `plaster_pink`
+   * is 0xc09a86, which is terracotta, and `plaster_blue` is 0x8f9aa0, which is
+   * stone. Building a Miami rooftop out of them produced exactly what it should
+   * have: concrete. No arrangement of realistic tints becomes a neon skyline.
+   *
+   * So these are picked as GAME colour rather than as pigment: near-white
+   * plaster to carry the light, and four fully saturated accents with the
+   * weathering dialled right down, because grime is what turns a bright hue
+   * back into mud. They deliberately break the 0.02-0.9 reflectance convention
+   * the file header describes — that rule exists to keep photoreal surfaces
+   * behaving under the exposure curve, and this block is not photoreal.
+   */
+  /**
+   * A COOL white, because the sun is not neutral.
+   *
+   * tools/hour-sweep.mjs measures the sun's blue/red ratio at 0.755 even at its
+   * most neutral hour, so a surface painted a warm white renders warmer still —
+   * the deck measured rgb(204,190,173), which is sand. This hex is the inverse
+   * of that sun tint, normalised so the brightest channel still lands at the
+   * usual lift: paint it slightly blue and it arrives on screen neutral. It
+   * looks wrong in a colour picker and right in the game, which is the whole
+   * point of tuning against a render instead of against a swatch.
+   */
+  neon_white: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: paint(0xd1def5), scale: 2.0, weather: [0.08, 0.1, 0.25, 0.15] },
+  },
+  neon_pink: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: paint(0xff2e88), scale: 2.2, weather: [0.06, 0.08, 0.2, 0.12] },
+  },
+  neon_cyan: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: paint(0x15d8e0), scale: 2.2, weather: [0.06, 0.08, 0.2, 0.12] },
+  },
+  neon_purple: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: paint(0x8a2be2), scale: 2.3, weather: [0.06, 0.08, 0.2, 0.12] },
+  },
+  neon_orange: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: paint(0xff6a13), scale: 2.3, weather: [0.06, 0.08, 0.2, 0.12] },
+  },
+  neon_teal: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: paint(0x00b899), scale: 2.1, weather: [0.06, 0.08, 0.2, 0.12] },
+  },
+
   // ---------------------------------------------------------- architecture --
   plaster_cream: {
     name: 'plaster',
