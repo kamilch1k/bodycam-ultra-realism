@@ -52,9 +52,9 @@ const MAX_BLIPS = 48;
  * ---------------------------------------------------------------------------
  * WHAT THIS SUBSYSTEM READS FROM OTHERS (all optional, all duck-typed)
  * ---------------------------------------------------------------------------
- *   weapons.getHudState() -> { name, mode, ammo, reserve, magSize, reloading,
- *                              reloadProgress, ads, spread, lethalCount,
- *                              tacticalCount }
+ *   weapons.getHudState() -> { name, mode, ammo, reserve, magSize, mags,
+ *                              hideCount, reloading, reloadProgress, ads,
+ *                              spread, lethalCount, tacticalCount }
  *   player.getHudState()  -> { health, maxHealth, armour, maxArmour, regen,
  *                              move, sprint, crouch, ads, airborne, position }
  *                            (or plain `player.health` / `player.position`)
@@ -132,6 +132,8 @@ export class UiSystem {
       regen: false,
       ammo: 30,
       reserve: 210,
+      mags: 7,
+      hideCount: false,
       magSize: 30,
       reloading: false,
       reloadProgress: 0,
@@ -540,6 +542,8 @@ export class UiSystem {
       if (ws.mode) s.fireMode = ws.mode;
       if (ws.ammo !== undefined) s.ammo = ws.ammo;
       if (ws.reserve !== undefined) s.reserve = ws.reserve;
+      if (ws.mags !== undefined) s.mags = ws.mags;
+      if (ws.hideCount !== undefined) s.hideCount = !!ws.hideCount;
       if (ws.magSize !== undefined) s.magSize = ws.magSize;
       if (ws.reloading !== undefined) s.reloading = !!ws.reloading;
       if (ws.reloadProgress !== undefined) s.reloadProgress = ws.reloadProgress;

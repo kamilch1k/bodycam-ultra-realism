@@ -537,6 +537,15 @@ export class WeaponSystem {
     const s = this.state;
     if (!s) return 0;
     const add = Math.min(rounds, Math.max(0, s.def.reserve - s.reserve));
+    if (s.pouch && this.ctx.config.hardcore) {
+      // You do not pick up loose rounds and thumb them into a mag mid-fight:
+      // what a resupply gives you is full magazines, and the remainder is
+      // rounds you are not carrying.
+      const full = Math.floor(add / s.def.magSize);
+      for (let i = 0; i < full; i++) s.pouch.push(s.def.magSize);
+      s.reserve = s.pouch.reduce((a, b) => a + b, 0);
+      return full * s.def.magSize;
+    }
     s.reserve += add;
     return add;
   }

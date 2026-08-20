@@ -353,6 +353,12 @@ export class PerkSystem {
   /** One roll against the drop table, at the body. */
   rollDrop(at) {
     if (!at) return;
+    // Nothing drops out of a man you shot. A pick-one-of-three card in the
+    // middle of a firefight is the arcade fork's fantasy of being powerful;
+    // this one's is that the room is dangerous. The system stays registered and
+    // wired — armour and ammo still resolve through it — it just stops handing
+    // out upgrades. See DIRECTION.md.
+    if (this.ctx.config.hardcore) return;
     const r = this.ctx.rng?.float?.() ?? Math.random();
     let acc = 0;
     for (const [kind, spec] of Object.entries(PICKUPS)) {
@@ -418,7 +424,7 @@ export class PerkSystem {
     // Drain queued level-ups on a timer rather than all at once. Nothing here
     // blocks, so this runs while the player keeps fighting.
     if (this._rollCd > 0) this._rollCd -= dt;
-    if (this._rollCd <= 0 && this._queue > 0) this._offerNext();
+    if (this._rollCd <= 0 && this._queue > 0 && !this.ctx.config.hardcore) this._offerNext();
 
     if (!this.chests.length) return;
     const player = this.ctx.peek('player');

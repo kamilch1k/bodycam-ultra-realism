@@ -165,13 +165,13 @@ export const DEFAULTS = {
   // `?q=ultra`, and the in-game quality menu still exposes every preset.
   quality: 'mobile',
   /**
-   * Level to build. Defaults to the shoot house, NOT the street map: the street
-   * takes ~25 s to build and on a portal that is a bounce rather than a load.
-   * The greybox levels are up in about a second.
+   * The six-room CQB kill house, garrisoned. This is the shape this game's
+   * fights want (see DIRECTION.md) and it is up in about a second; the street
+   * map is the ~25 s one and is a deliberate choice from the menu.
    */
-  map: 'holdout',
+  map: 'swat',
   /** 'tdm' garrisons the level with enemy squads; 'sandbox' spawns none. */
-  mode: 'horde',
+  mode: 'tdm',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,

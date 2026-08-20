@@ -72,6 +72,17 @@ rather than re-fix:
     git log --oneline shared/main ^HEAD     # what the other side has fixed
     git cherry-pick <sha>
 
+That is the steady state. It did not happen: 47 commits and +12k lines piled up
+on the arcade fork — the real-hardware stutter fixes, the prewarm rework, the
+baked shot bank, the survivors loop, three maps, saves, i18n and two dozen
+profiling tools — while this fork sat at the split, so the whole thing was
+merged across in one go instead (`arcade` remote, `arcade/survivors-mode`).
+Conflicts were resolved toward this fork's identity. The arcade-shaped parts
+came with it and are inert here rather than deleted: touch controls and aim
+assist are gated on a coarse pointer, and the portal SDK and its ad breaks only
+exist in a `VITE_PORTAL` build, which this game does not make. Deleting them
+would only make the next merge harder.
+
 Engine-level work (viewmodel, hands, ballistics, physics, materials, AI
 internals) is worth carrying both ways. Tuning and content are not — they are
 the whole point of the split.

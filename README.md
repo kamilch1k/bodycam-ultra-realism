@@ -1,9 +1,18 @@
-# Claude of Duty
+# Bodycam — Ultra Realism
 
-Get updates [here](https://shumer.dev/newsletter).
+A hardcore PC tactical shooter with a bodycam presentation, built in the browser
+with Three.js r180 and WebGL2. Desktop only, mouse and keyboard. Forked from
+[Claude of Duty](https://github.com/mshumer/Claude-of-Duty) and sharing an engine
+with its arcade sibling `hotline-strike`; `DIRECTION.md` is what separates them.
 
-A first-person shooter built in the browser with Three.js r180 and WebGL2. Roughly
-55k lines across 11 subsystems, written by a fleet of AI agents under orchestration.
+The camera is clipped to a plate carrier, not screwed to your skull: a wide
+barrel lens, a rolling shutter that leans the frame when you swing, grain that
+climbs in the shadows because it is amplifier gain rather than film, and a mount
+22 cm below eye level that takes the torso's motion raw. Rounds kill in one or
+two hits in both directions, nothing regenerates, and ammunition is tracked per
+magazine — you keep the partial you dropped and you do not know its count.
+
+`?bodycam=0` and `?hardcore=0` turn each half off for a like-for-like look.
 
 **There are no art assets.** Every texture, mesh, animation and sound is generated
 procedurally at load time from code. No models, no HDRIs, no image files, no audio

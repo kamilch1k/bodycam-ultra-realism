@@ -42,7 +42,17 @@ import { MENU_BG } from './menubg.js';
  * away from. Shipping them would put the weakest thing in the game one click
  * from the front page. Re-add an entry here when a map has had the pass.
  */
-export const MAPS = [{ id: 'miami' }, { id: 'outpost' }, { id: 'zone' }];
+/**
+ * The kill house FIRST. The arcade fork cut the menu down to its three colour
+ * arenas, which are built for a horde arriving from everywhere — the wrong
+ * shape for a game whose fights are a doorway you did not clear. Shoot House
+ * and Market Street were still building all along, they were just not a click
+ * away any more.
+ */
+export const MAPS = [
+  { id: 'swat' }, { id: 'street' },
+  { id: 'miami' }, { id: 'outpost' }, { id: 'zone' },
+];
 
 /**
  * Two modes, one map each, and the map list is now those two maps. Five maps
@@ -59,7 +69,7 @@ export const MAPS = [{ id: 'miami' }, { id: 'outpost' }, { id: 'zone' }];
  * With a single entry the column is not rendered at all, so the menu is a map
  * choice and a Play button.
  */
-export const MODES = [{ id: 'horde' }];
+export const MODES = [{ id: 'tdm' }, { id: 'horde' }, { id: 'strike' }];
 
 const CSS = `
 .ow-fe{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;
