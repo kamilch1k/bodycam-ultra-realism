@@ -80,13 +80,21 @@ const o = [];
 o.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${PX}" height="${PY}" viewBox="0 0 ${PX} ${PY}" font-family="ui-monospace,Menlo,monospace">`);
 o.push(`<rect width="${PX}" height="${PY}" fill="#0d1117"/>`);
 
+/**
+ * One band per ELEVATION the map actually uses, not per arbitrary slice. A
+ * single ">1.4" bucket painted the 1.4 wings, the 2.8 deck and the 4.2 antenna
+ * the same green and made a four-level map look like one plateau — which is the
+ * exact mistake the render exists to catch.
+ */
 const byHeight = (h) =>
   h === null ? '#3a1d24'
-  : h < 0.2 ? '#1d2b3a'
-  : h < 0.55 ? '#25455c'
-  : h < 0.9 ? '#2d6b78'
-  : h < 1.4 ? '#3f8f7d'
-  : '#5aa86a';
+  : h < 0.2 ? '#16202c'   // canyon floor / spawn
+  : h < 0.55 ? '#1f3d52'  // first tread
+  : h < 0.95 ? '#2a6070'  // crate tops, vaultable
+  : h < 1.6 ? '#3f8f7d'   // the 1.4 wings
+  : h < 2.2 ? '#63a86b'   // mid-flight
+  : h < 3.2 ? '#9ec96a'   // the 2.8 CT deck
+  : '#e8d46a';            // 4.2 antenna deck
 
 const c = d.cell * S;
 o.push('<g shape-rendering="crispEdges">');
@@ -130,10 +138,10 @@ for (let v = -Math.floor(W / 2 / 10) * 10; v <= W / 2; v += 10) {
 o.push('</g>');
 
 o.push(`<g font-size="10"><text x="${M}" y="20" font-size="13" fill="#e6edf3">${MAP.toUpperCase()} — floorplan over nav grid (north up, level space)</text>`);
-[['#5c1f2b', 'surface, NOT walkable'], ['#1d2b3a', 'walkable y≈0'], ['#25455c', 'walkable 0.2-0.55'],
- ['#2d6b78', 'walkable 0.55-0.9'], ['#3f8f7d', 'walkable 0.9-1.4'], ['#5aa86a', 'walkable >1.4']]
+[['#5c1f2b', 'NOT walkable'], ['#16202c', 'floor 0'], ['#1f3d52', '0.35'], ['#2a6070', '0.7'],
+ ['#3f8f7d', '1.4 wings'], ['#9ec96a', '2.8 CT deck'], ['#e8d46a', '4.2 antenna']]
   .forEach(([col, label], i) => {
-    const lx = M + i * 128;
+    const lx = M + i * 112;
     o.push(`<rect x="${lx}" y="26" width="10" height="10" fill="${col}"/><text x="${lx + 14}" y="34" fill="#8b98a5">${label}</text>`);
   });
 o.push('</g></svg>');
