@@ -222,10 +222,10 @@ export const CAMERA = {
      * stop.
      */
     swing: {
-      yaw: 0.055, // radians of trail per rad/s of turn
-      pitch: 0.045,
-      roll: 0.05, // a chest rolls into a turn
-      max: 7 * DEG,
+      yaw: 0.038, // radians of trail per rad/s of turn
+      pitch: 0.03,
+      roll: 0.038, // a chest rolls into a turn
+      max: 4.5 * DEG,
       tau: 0.085, // trail builds in
       settle: 0.16, // ...and unwinds slower than it built, so it reads as mass
     },
@@ -266,12 +266,14 @@ export const CAMERA = {
 
   recoil: {
     /**
-     * 14, not 9.5 — same reason as the viewmodel's spring (see addRecoil): at
-     * 800 rpm a 9.5 Hz spring is still travelling when the next round hits it.
-     * Above the cycle rate, each shot is a rise and a settle; below it, the
-     * shots beat against each other and the view chatters.
+     * 11 and CRITICALLY DAMPED (see addRecoil in viewmodel.js for the long
+     * version). Pushing this to 14 to outrun an 800 rpm rifle just moved the
+     * problem: an oscillation that fast is only sampled four or five times a
+     * cycle at 60 fps, so the display becomes the thing you notice. A spring
+     * that never overshoots has no phase to beat against, which is what the
+     * frequency was trying to fix.
      */
-    freq: 14,
+    freq: 11,
     /**
      * 0.72, not 0.5. At 800 rpm a shot lands every 75 ms and this spring was
      * underdamped enough to return PAST rest and come back — so the view was
@@ -280,7 +282,7 @@ export const CAMERA = {
      * burst, and it is a damping problem, not an amplitude one. Still visibly
      * springy, but it settles between shots.
      */
-    damping: 0.9,
+    damping: 1.0,
     residualTau: 0.28,
     /**
      * The share of each shot's climb that does NOT come back on its own — the

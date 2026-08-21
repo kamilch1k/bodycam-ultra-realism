@@ -1012,19 +1012,25 @@ export class Viewmodel {
     // Damping, not amplitude, is what separates a heavy gun from a shaky one:
     // an underdamped spring returns past rest and comes back again, so a second
     // kick arrives out of phase with the next shot.
-    // THE SPRING HAS TO BE FASTER THAN THE GUN. An 800 rpm rifle lands 13.3
-    // shots a second; a 8.5 Hz spring has not finished the last one when the
-    // next arrives, so impulses stack at whatever phase they happen to catch —
-    // which is the chatter, and no amount of damping fixes a spring that is
-    // simply too slow. Floor it at 1.4x the cycle rate and each shot becomes a
-    // discrete rise and settle instead of a beat against the one before.
+    /**
+     * CRITICALLY DAMPED, NOT FAST.
+     *
+     * The previous attempt at this floored the spring frequency above the
+     * cycle rate (1.4x rpm, so ~19 Hz on the rifle) to stop shots stacking. It
+     * stopped the stacking and replaced it with something worse: a 19 Hz
+     * oscillation displayed at 60 fps is four samples a cycle, so the eye sees
+     * the sampling, not the motion. You cannot outrun the frame rate.
+     *
+     * What actually removes the beat between shots is damping >= 1. A critically
+     * damped spring never crosses rest, so there is no phase for the next kick
+     * to arrive out of — it rises and it comes back, at a frequency the display
+     * can still resolve.
+     */
     const hipZ = cfg.recoilDamping ?? 0.74;
-    const rateHz = (w.def.rpm ?? 700) / 60;
-    const f0 = Math.max(r.freq, rateHz * 1.4);
-    this.recPos.f = f0;
-    this.recPos.z = lerp(hipZ, 0.95, ads);
-    this.recRot.f = f0 * 0.92;
-    this.recRot.z = lerp(hipZ, 0.95, ads);
+    this.recPos.f = r.freq;
+    this.recPos.z = lerp(hipZ, 1.02, ads);
+    this.recRot.f = r.freq * 0.92;
+    this.recRot.z = lerp(hipZ, 1.02, ads);
     // A velocity impulse of v0 on a spring of angular frequency w peaks at
     // roughly v0/w, so the kick amplitudes below are in real metres/radians.
     const wp = TAU * this.recPos.f;
@@ -1252,7 +1258,9 @@ export class Viewmodel {
     // A rifle held by a man who is turning is not a rifle bolted to a camera:
     // it trails, then swings past, then settles. The arcade fork wants that
     // small enough to shoot through; this one wants to feel the weight of it.
-    const lagScale = lerp(1, A.adsLag ?? 0.2, ads) * (this.ctx.config.bodycam ? 1.75 : 1);
+    // 1.25, down from 1.75: past about this the weapon stops reading as heavy
+    // and starts reading as attached to the camera by string.
+    const lagScale = lerp(1, A.adsLag ?? 0.2, ads) * (this.ctx.config.bodycam ? 1.25 : 1);
     const av = this._angVel;
     this.lag.step(
       dt,

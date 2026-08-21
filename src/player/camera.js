@@ -24,7 +24,7 @@
 import * as THREE from 'three';
 import { CAMERA, MOVE } from './tuning.js';
 import {
-  Spring, RecoilAxis, clamp, clamp01, lerp, approach, hashNoise, DEG,
+  Spring, RecoilAxis, clamp, clamp01, lerp, approach, smoothstep, hashNoise, DEG,
 } from './springs.js';
 
 export class CameraRig {
@@ -38,6 +38,9 @@ export class CameraRig {
     this.swingYaw = 0;
     this.swingPitch = 0;
     this.swingRoll = 0;
+    /** Low-passed look rate, rad/s — also drives the rolling shutter. */
+    this.lookRateYaw = 0;
+    this.lookRatePitch = 0;
     this._prevPitch = 0;
 
     // ---- smoothed stance -------------------------------------------------
@@ -248,15 +251,32 @@ export class CameraRig {
     // differenced here because movement only publishes yawRate.
     if (this.mount) {
       const W = this.mount.swing;
-      const pitchRate = dt > 1e-5 ? (m.pitch - this._prevPitch) / dt : 0;
-      const to = (cur, target, tau) => approach(cur, clamp(target, -W.max, W.max), tau, dt);
-      // Building the trail is quicker than unwinding it — a spring that
-      // returns as fast as it loads reads as rubber, not as weight.
-      const tauY = Math.abs(m.yawRate) > 0.35 ? W.tau : W.settle;
-      const tauP = Math.abs(pitchRate) > 0.35 ? W.tau : W.settle;
-      this.swingYaw = to(this.swingYaw, -m.yawRate * W.yaw, tauY);
-      this.swingPitch = to(this.swingPitch, -pitchRate * W.pitch, tauP);
-      this.swingRoll = to(this.swingRoll, m.yawRate * W.roll, tauY);
+      /**
+       * FILTER THE RATE FIRST.
+       *
+       * `m.yawRate` is a raw mouse delta divided by a variable frame time: the
+       * mouse delivers whole pixels on its own schedule, so consecutive frames
+       * can report 4 rad/s and 0.5 rad/s for one smooth flick. Feeding that
+       * straight into a camera offset is the stutter — the frame twitches with
+       * the sampling noise rather than with the turn. One pole at 70 ms takes
+       * the noise out and leaves the gesture.
+       */
+      const rawPitchRate = dt > 1e-5 ? (m.pitch - this._prevPitch) / dt : 0;
+      this.lookRateYaw = approach(this.lookRateYaw, m.yawRate, 0.07, dt);
+      this.lookRatePitch = approach(this.lookRatePitch, rawPitchRate, 0.07, dt);
+
+      /**
+       * And blend the time constant instead of switching it. The trail should
+       * load faster than it unwinds, but choosing between two taus on a
+       * threshold makes the offset's VELOCITY jump the moment you cross it,
+       * which is its own little pop every time a turn starts or ends.
+       */
+      const speed = Math.min(1, Math.abs(this.lookRateYaw) / 1.2);
+      const tau = lerp(W.settle, W.tau, smoothstep(speed));
+      const to = (cur, target) => approach(cur, clamp(target, -W.max, W.max), tau, dt);
+      this.swingYaw = to(this.swingYaw, -this.lookRateYaw * W.yaw);
+      this.swingPitch = to(this.swingPitch, -this.lookRatePitch * W.pitch);
+      this.swingRoll = to(this.swingRoll, this.lookRateYaw * W.roll);
     }
     this._prevPitch = m.pitch;
 

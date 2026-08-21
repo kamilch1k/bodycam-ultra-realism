@@ -427,8 +427,8 @@ export class RenderSystem {
       // camera is a cheap wide-angle sensor strapped to a moving chest: the lens
       // bends, the CMOS reads out line by line, and the shadows are gain.
       bcamBarrel: 0.16,
-      bcamShutter: 0.010, // UV skew per rad/s of look rate
-      bcamShutterMax: 0.020,
+      bcamShutter: 0.005, // UV skew per rad/s of look rate
+      bcamShutterMax: 0.009,
       bcamGain: 0.030, // extra grain in the darks
       bcamVignette: 0.62,
       bcamChromatic: 0.0038,
@@ -439,7 +439,13 @@ export class RenderSystem {
       // the pass — stays pin sharp.
       // 3.3 px at 1080p, down 40%: at 5.5 the near and mid ground of an ADS frame
       // was a watercolour smear that hid the very thing the sights are pointed at.
+      // A body camera is a fixed wide lens with a deep field: everything from
+      // arm's length to the end of the street is in focus, always. The aimed
+      // depth-of-field blur is a cinematic affectation borrowed from a game
+      // that wanted your eye pulled to the sight picture, and at 92 degrees it
+      // reads as the frame going soft for no reason. See `bcamDofCoc`.
       dofMaxCoc: 3.3,
+      bcamDofCoc: 0.0,
       dofNearRatio: 0.38,
       dofFocusMin: 3.0,
       dofFocusMax: 18.0,
@@ -982,21 +988,32 @@ export class RenderSystem {
   _updateBodycam(ctx, out) {
     const s = this.settings;
     if (!ctx.config.bodycam) { out.set(0, 0, 0, 0); return; }
-    const cam = ctx.camera;
     const dt = Math.max(ctx.time.dt ?? 1 / 60, 1e-4);
-    const e = cam.rotation;
-    let dy = e.y - (this._bcamYaw ?? e.y);
-    // shortest way round, so the +-PI seam is not a whip-pan
-    if (dy > Math.PI) dy -= 2 * Math.PI; else if (dy < -Math.PI) dy += 2 * Math.PI;
-    const dp = e.x - (this._bcamPitch ?? e.x);
-    this._bcamYaw = e.y;
-    this._bcamPitch = e.x;
+    /**
+     * Driven by the camera rig's FILTERED look rate, not by differencing the
+     * camera's own rotation. Differencing picked up the raw mouse sampling
+     * noise (see camera.js) AND the mount swing on top of it, then multiplied
+     * the pair into a UV shift — a skew that jittered several pixels frame to
+     * frame while turning, which is not what a rolling shutter looks like.
+     * The rig already low-passes the gesture; use that.
+     */
+    const rig = ctx.peek('player')?.rig;
+    let ry = rig?.lookRateYaw ?? 0;
+    let rp = rig?.lookRatePitch ?? 0;
+    if (!rig) {
+      const e = ctx.camera.rotation;
+      let dy = e.y - (this._bcamYaw ?? e.y);
+      if (dy > Math.PI) dy -= 2 * Math.PI; else if (dy < -Math.PI) dy += 2 * Math.PI;
+      ry = dy / dt;
+      rp = (e.x - (this._bcamPitch ?? e.x)) / dt;
+      this._bcamYaw = e.y;
+      this._bcamPitch = e.x;
+    }
     const m = s.bcamShutterMax;
-    const clampSkew = (v) => Math.max(-m, Math.min(m, v * s.bcamShutter / dt));
-    // low-pass, or a single dropped frame reads as a jolt
-    const k = Math.min(1, dt * 18);
-    this._bcamSx = (this._bcamSx ?? 0) + (clampSkew(dy) - (this._bcamSx ?? 0)) * k;
-    this._bcamSy = (this._bcamSy ?? 0) + (clampSkew(dp) - (this._bcamSy ?? 0)) * k;
+    const skew = (v) => Math.max(-m, Math.min(m, v * s.bcamShutter));
+    const k = Math.min(1, dt * 12);
+    this._bcamSx = (this._bcamSx ?? 0) + (skew(ry) - (this._bcamSx ?? 0)) * k;
+    this._bcamSy = (this._bcamSy ?? 0) + (skew(rp) - (this._bcamSy ?? 0)) * k;
     out.set(s.bcamBarrel, this._bcamSx, this._bcamSy, s.bcamGain);
   }
 
@@ -1606,7 +1623,10 @@ export class RenderSystem {
     // World only, and only while the sights are actually up. The viewmodel is
     // composited afterwards, so the optic body and the reticle stay sharp by
     // construction rather than by masking.
-    if (this.dof && this._adsT > 0.01 && this.needsPrepass) {
+    const dofOn = ctx.config.bodycam
+      ? (this.settings.bcamDofCoc ?? 0) > 0.01
+      : true;
+    if (dofOn && this.dof && this._adsT > 0.01 && this.needsPrepass) {
       const dofOut = this.pingRt[this._pingIndex];
       color = this.dof.render(
         renderer,

@@ -220,8 +220,8 @@ export const DEFAULTS = {
    *              at 0 the sway is a decoration and the shot ignores it.
    */
   aiming: {
-    adsSway: 0.62,
-    adsLag: 0.55,
+    adsSway: 0.55,
+    adsLag: 0.4,
     settleSway: 1.4,
     settleTime: 1.5,
     aimFollow: 0.75,
@@ -234,7 +234,7 @@ export const DEFAULTS = {
   recoilScale: 1.5,
   climbScale: 1.1,
   adsFlipKeep: 0.18,
-  recoilDamping: 0.88,
+  recoilDamping: 1.0,
   recoilJitter: 0.05,
   adsScale: 1.25,
   /** Global damage multiplier applied at the two hit-resolution sites (player
