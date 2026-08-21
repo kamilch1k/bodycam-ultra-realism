@@ -20,7 +20,12 @@
 /** Seconds between rounds/waves — long enough to reload and pick a corner. */
 const BREAK = 4;
 /** Seconds the corpse stays put after death, so the player sees it happen. */
-const DEATH_HOLD = 2.2;
+/**
+ * 4.5, not 2.2. The camera now falls with you (see player/deathcam.js) and 2.2 s
+ * cut away while it was still tumbling — you never saw where you ended up, which
+ * is the only part of a bodycam death worth watching.
+ */
+const DEATH_HOLD = 4.5;
 
 class BaseMode {
   constructor(ctx) {

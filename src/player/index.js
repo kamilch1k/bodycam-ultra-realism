@@ -80,6 +80,7 @@
 
 import * as THREE from 'three';
 import { AimAssist } from './assist.js';
+import { DeathCam } from './deathcam.js';
 import { Movement } from './movement.js';
 import { CameraRig } from './camera.js';
 import { Health } from './health.js';
@@ -187,6 +188,14 @@ export class PlayerSystem {
     // ---- incoming damage / suppression ----------------------------------
     const on = (type, fn) => this._offEvents.push(ctx.events.on(type, fn));
     on('damage:dealt', (e) => this._onDamageDealt(e));
+    /**
+     * NOBODY WAS LISTENING FOR THIS. `health` has emitted `player:death` since
+     * the fork, and the only subscribers were the two arcade modes' rule
+     * objects — `tdm` and `sandbox` deliberately have none (see modes/index.js),
+     * so in the mode this game ships in, dying set a flag and the game carried
+     * on with you walking around at zero.
+     */
+    on('player:death', (e) => this._onDeath(e));
     on('explosion', (e) => this._onExplosion(e));
     on('bullet:impact', (e) => this._onBulletImpact(e));
 
@@ -316,6 +325,12 @@ export class PlayerSystem {
     this.rig.update(dt, this.movement, this.health);
     if (this.controlEnabled) this.rig.applyTo(ctx.camera);
     else this.rig.forward.set(0, 0, -1).applyQuaternion(ctx.camera.quaternion);
+
+    // The camera is all this owns. WHEN the death ends is the mode's call —
+    // `ModeSystem._deathWatch` holds on the body, clears the board so you never
+    // respawn into the squad that just killed you, and then respawns you. Two
+    // systems each running their own death timer is how you get respawned twice.
+    if (this.deathCam?.active) this.deathCam.update(dt, ctx.camera);
 
     this.lowHealthPass?.sync(this.health);
     this._syncHitbox();
@@ -528,6 +543,18 @@ export class PlayerSystem {
   /* incoming damage                                                      */
   /* ==================================================================== */
 
+  /**
+   * The camera stops being a camera: control off, the eye is handed to the
+   * rigid-body world with the momentum you had and the shove from whatever
+   * killed you, and it films the floor until you respawn. See deathcam.js.
+   */
+  _onDeath() {
+    if (this.deathCam?.active) return;
+    this.deathCam ??= new DeathCam(this.ctx);
+    this.setControlEnabled(false);
+    this.deathCam.start(this.ctx.camera, this._lastKiller ?? null, this.movement?.velocity ?? null);
+  }
+
   _onDamageDealt(e) {
     if (!e) return;
     const t = e.target;
@@ -536,6 +563,8 @@ export class PlayerSystem {
     // `point` to where the round landed (which is the player), and `from` to the
     // muzzle. Using `point` pinned every arc to dead ahead.
     const from = e.from ?? e.source?.position ?? e.point ?? null;
+    // Kept for the death cam, which needs to know which way to fall.
+    this._lastKiller = from;
     this.applyDamage(e.amount ?? 0, from, { type: 'bullet' });
   }
 
@@ -792,6 +821,14 @@ export class PlayerSystem {
   }
 
   setControlEnabled(on) {
+    /**
+     * Death outranks everything else that hands control back. The pause menu
+     * calls this on close, the gunsmith calls it on exit, the modes call it
+     * between rounds — and any of them landing during the death sequence would
+     * put you back in control of a camera that is lying on the floor. Only
+     * `reviveFromDeath` ends a death.
+     */
+    if (on && this.deathCam?.active) return;
     this.controlEnabled = !!on;
     this.movement.controlEnabled = this.controlEnabled;
     if (!on) {
@@ -832,6 +869,10 @@ export class PlayerSystem {
   }
 
   respawn(index = 0) {
+    // Ends the death sequence wherever it is called from, so `setControlEnabled`
+    // below (and the mode's, right after) is no longer refused by the guard.
+    this.deathCam?.stop();
+    this._lastKiller = null;
     const world = this.ctx.peek('world');
     const sp = world?.spawn?.(index);
     this.health.reset(true);
