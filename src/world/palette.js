@@ -286,6 +286,23 @@ export const PALETTE = {
     surface: 'metal',
     opts: { vertexMasks: true, tint: 0x6d8390, scale: 1.3 },
   },
+  /** School-bus yellow. The one colour on Cul-de-Sac that is allowed to shout. */
+  metal_yellow: {
+    name: 'metal_painted',
+    surface: 'metal',
+    opts: { vertexMasks: true, tint: 0xd8a52a, scale: 1.25 },
+  },
+  /** Suburban siding: pale mint and butter, the two houses of the map. */
+  siding_mint: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: 0x9fbcae, scale: 2.1, weather: [0.35, 0.45, 1.2, 0.5] },
+  },
+  siding_butter: {
+    name: 'plaster',
+    surface: 'plaster',
+    opts: { vertexMasks: true, tint: 0xd6c88a, scale: 2.1, weather: [0.35, 0.45, 1.2, 0.5] },
+  },
   metal_green: {
     name: 'metal_painted',
     surface: 'metal',
@@ -371,6 +388,18 @@ export const PALETTE = {
   rubber: { name: 'rubber', surface: 'rubber', opts: { vertexMasks: true, scale: 0.45 } },
   glass: { name: 'glass', surface: 'glass', opts: { scale: 2.0 } },
   foliage: { name: 'foliage', surface: 'foliage', opts: { vertexMasks: true } },
+  /**
+   * Mown grass. Built on DIRT, not on the foliage generator: `foliage` draws
+   * individual leaf cards, which is right for a hedge and reads as a scatter of
+   * dinner plates when you lay it flat. Dirt already has the fine relief a lawn
+   * needs; `tint` is a straight albedo multiply, so greening it gives turf with
+   * real shading underneath instead of a flat green field.
+   */
+  lawn: {
+    name: 'dirt',
+    surface: 'dirt',
+    opts: { vertexMasks: true, tint: 0x6f8f4a, scale: 1.15 },
+  },
 
   // ------------------------------------------------------------- apertures --
   /**

@@ -58,7 +58,7 @@ import { MENU_BG } from './menubg.js';
  * shape this game's fights actually want (see DIRECTION.md), it is just grey.
  */
 export const MAPS = [
-  { id: 'zone' }, { id: 'swat' }, { id: 'outpost' },
+  { id: 'culdesac' }, { id: 'zone' }, { id: 'swat' }, { id: 'outpost' },
   { id: 'miami' }, { id: 'street' },
 ];
 

@@ -169,7 +169,7 @@ export const DEFAULTS = {
    * fights want (see DIRECTION.md) and it is up in about a second; the street
    * map is the ~25 s one and is a deliberate choice from the menu.
    */
-  map: 'zone',
+  map: 'culdesac',
   /** 'tdm' garrisons the level with enemy squads; 'sandbox' spawns none. */
   mode: 'tdm',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel

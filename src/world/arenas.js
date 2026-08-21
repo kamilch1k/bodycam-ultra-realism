@@ -879,7 +879,198 @@ const OUTPOST_SPAWNS = [
   [24, 24, Math.PI, 'a dock'],
 ];
 
+/* --------------------------------------------------------------------------
+ *  CUL-DE-SAC - two houses, one street, one bus.
+ *
+ *  The oldest shape in the genre and the reason it keeps being rebuilt: two
+ *  mirrored houses facing each other across a road, spawns in the back yards,
+ *  and something big parked in the middle of the street so the centre lane is
+ *  contested rather than a shooting gallery. Nuketown is the famous one; the
+ *  pattern predates it and every arena shooter has a version.
+ *
+ *  THREE LANES, and they are different fights. The STREET is fast and open and
+ *  the bus is the only thing that makes crossing it survivable. The two HOUSES
+ *  are close-quarters rooms with two ways in each, which is where this game's
+ *  weapon handling actually pays. The BACK YARDS are the flank: slower, fenced,
+ *  and they arrive behind the other team rather than in front of it.
+ *
+ *  MIRRORED, NOT SYMMETRICAL. Both sides get the same shapes and the same
+ *  timings, but the porch, the garage bay and the yard clutter are swapped end
+ *  for end, so the two halves stay tellable apart at a glance. A map you cannot
+ *  orient yourself in is one you die in for reasons you cannot name.
+ *
+ *  NO ROOFS, like every other arena here. The lighting model in this build puts
+ *  the sun and the sky on open geometry, and a sealed box interior is a black
+ *  room. The porch canopies give the houses their silhouette; the rooms are open
+ *  to the sky the way a shoot house is.
+ *
+ *  Distances: 42 m spawn to spawn, 11 m of street to cross, cover at 1.1 m all
+ *  the way along it. First contact lands inside ten seconds; the crossing stays
+ *  a decision.
+ * -------------------------------------------------------------------------- */
+
+/** One suburban house: four walls, a dividing wall, a garage bay and a porch. */
+function house(cx, cz, flip, siding) {
+  const s = flip ? -1 : 1;
+  const W = 18; // frontage, x
+  const D = 11; // depth, z
+  const H = 3.4;
+  const x0 = cx - W / 2;
+  const x1 = cx + W / 2;
+  const zFront = cz + (D / 2) * s; // the side facing the street
+  const zBack = cz - (D / 2) * s;
+  const out = [];
+
+  // Front wall: the door onto the porch, offset toward the living-room end so
+  // the entry is not on the same line as the hall.
+  out.push(...wall('x', zFront, x0, x1, H, [cx - 4 * s], WALL_T, siding));
+  // Back wall: the kitchen door onto the yard. Two ways in, always.
+  out.push(...wall('x', zBack, x0, x1, H, [cx + 5 * s], WALL_T, siding));
+  // Side walls. The garage end is open to the street side, so the garage is a
+  // route through the house rather than a cupboard.
+  out.push(...wall('z', x0, cz - D / 2, cz + D / 2, H, [], WALL_T, siding));
+  out.push(...wall('z', x1, cz - D / 2, cz + D / 2, H, [cz + 2 * s], WALL_T, siding));
+
+  // Interior: hall wall with one doorway, splitting the rooms from the garage.
+  out.push(...wall('z', cx + 3 * s, cz - D / 2 + 0.2, cz + D / 2 - 0.2, H, [cz], WALL_T, 'plaster_white'));
+  // A shorter wall makes the far room an L rather than a box, so a defender
+  // cannot hold the whole interior from one corner.
+  const inner = [x0 + 0.2, cx - 2 * s].sort((a, b) => a - b);
+  out.push(...wall('x', cz - 1.5 * s, inner[0], inner[1], H, [cx - 6 * s], WALL_T, 'plaster_white'));
+
+  // Porch: a canopy on two posts. The only overhead geometry on the map, and
+  // what makes a house read as a house from across the street.
+  out.push([cx - 4 * s, zFront + 2.2 * s, 6.4, 3.0, 0.4, 0, 'concrete_prop']);
+  out.push([cx - 4 * s, zFront + 1.9 * s, 6.4, 3.4, 0.22, 0, 'wood_pale', 3.2]);
+  out.push([cx - 6.6 * s, zFront + 3.3 * s, 0.26, 0.26, 3.2, 0, 'wood_pale']);
+  out.push([cx - 1.4 * s, zFront + 3.3 * s, 0.26, 0.26, 3.2, 0, 'wood_pale']);
+
+  // Furniture at cover height: counter, sofa, bed.
+  out.push([cx + 5.5 * s, cz - 2 * s, 4.4, 1.0, 1.1, 0, 'wood_prop']);
+  out.push([cx - 5 * s, cz + 1.5 * s, 3.0, 1.4, 1.0, 0, 'fabric_teal']);
+  out.push([cx - 6 * s, cz - 3 * s, 2.2, 1.8, 0.7, 0, 'fabric_cream']);
+  return out;
+}
+
+/**
+ * Bus, pickup and sedan, from boxes. Tall enough to break the sightline down
+ * the street, low enough to shoot over from a porch step - that difference is
+ * the whole tension of the middle lane.
+ */
+function vehicles() {
+  return [
+    // THE BUS, across the middle at a slight angle so neither end of the street
+    // gets a clean line down it.
+    [0, 0, 11.0, 2.4, 0.55, 0.16, 'metal_dark'],
+    [0, 0, 11.6, 2.7, 2.35, 0.16, 'metal_yellow', 0.55],
+    [-3.6, 0.75, 3.0, 2.5, 0.5, 0.16, 'glass', 2.9],
+    // pickup, north-east end
+    [16, -2.2, 5.0, 2.0, 0.45, -0.3, 'metal_dark'],
+    [16, -2.2, 5.2, 2.2, 1.0, -0.3, 'metal_blue', 0.45],
+    [16.9, -2.5, 2.2, 2.1, 0.95, -0.3, 'metal_blue', 1.45],
+    // sedan, south-west end
+    [-17, 2.4, 4.2, 1.9, 0.4, 0.22, 'metal_dark'],
+    [-17, 2.4, 4.4, 2.0, 0.85, 0.22, 'metal_green', 0.4],
+    [-17.3, 2.4, 2.4, 1.9, 0.7, 0.22, 'glass', 1.25],
+  ];
+}
+
+const CULDESAC = [
+  // ---- lawns, then road over them -----------------------------------------
+  // Front verges between kerb and porch, and the two back yards. Laid first so
+  // the drives and the kerbs sit on top where they overlap.
+  [0, -11, 58, 8.6, 0.05, 0, 'lawn'],
+  [0, 11, 58, 8.6, 0.05, 0, 'lawn'],
+  [0, -20, 50, 12, 0.05, 0, 'lawn'],
+  [0, 20, 50, 12, 0.05, 0, 'lawn'],
+
+  // ---- road, kerbs and drives, as thin slabs on the ground ----------------
+  [0, 0, 58, 11, 0.06, 0, 'asphalt'],
+  [0, -6.2, 58, 2.4, 0.16, 0, 'concrete_prop'],
+  [0, 6.2, 58, 2.4, 0.16, 0, 'concrete_prop'],
+  [10, -10, 6.5, 6, 0.1, 0, 'concrete_prop'],
+  [-10, 10, 6.5, 6, 0.1, 0, 'concrete_prop'],
+
+  // ---- the two houses -----------------------------------------------------
+  ...house(-2, -14, false, 'siding_mint'),
+  ...house(2, 14, true, 'siding_butter'),
+
+  // ---- the street ---------------------------------------------------------
+  ...vehicles(),
+  // A mailbox and a hydrant: the small silhouettes that tell you which end of
+  // the street you are looking down.
+  [-13, -6.6, 0.3, 0.3, 1.1, 0, 'metal_dark'],
+  [14, 6.6, 0.36, 0.36, 0.9, 0, 'metal_rust_prop'],
+
+  // ---- back yards: the flank routes ---------------------------------------
+  // Fences at 1.9 m, so a yard cannot be shot into from the street, with one
+  // gap at each end that is the actual flank.
+  ...wall('x', -24, -26, 22, 1.9, [-20, 18], 0.25, 'wood_prop_dark'),
+  ...wall('x', 24, -22, 26, 1.9, [-18, 20], 0.25, 'wood_prop_dark'),
+  ...wall('z', -26, -24, -8, 1.9, [-16], 0.25, 'wood_prop_dark'),
+  ...wall('z', 26, 8, 24, 1.9, [16], 0.25, 'wood_prop_dark'),
+  // Yard cover: shed, low wall, hedge. One of each per side, mirrored.
+  [-16, -20, 3.2, 2.8, 2.4, 0.2, 'corrugated'],
+  [8, -19, 4.0, 1.0, 1.1, 0, 'brick'],
+  [16, -21, 3.6, 1.2, 1.3, 0, 'foliage'],
+  [16, 20, 3.2, 2.8, 2.4, -0.2, 'corrugated'],
+  [-8, 19, 4.0, 1.0, 1.1, 0, 'brick'],
+  [-16, 21, 3.6, 1.2, 1.3, 0, 'foliage'],
+
+  // ---- the ends of the street ---------------------------------------------
+  // Blocked, but with cover beside the blockage: the street has to connect to
+  // the yards or the map is three parallel corridors.
+  [-28, 0, 1.2, 9, 2.6, 0, 'concrete_dark'],
+  [28, 0, 1.2, 9, 2.6, 0, 'concrete_dark'],
+  [-25, -4.5, 2.6, 1.2, 1.1, 0, 'concrete_prop'],
+  [25, 4.5, 2.6, 1.2, 1.1, 0, 'concrete_prop'],
+
+  // ---- perimeter -----------------------------------------------------------
+  ...wall('z', -31, -27, 27, 6, [], 0.6, 'concrete_dark'),
+  ...wall('z', 31, -27, 27, 6, [], 0.6, 'concrete_dark'),
+  ...wall('x', -27, -31, 31, 6, [], 0.6, 'concrete_dark'),
+  ...wall('x', 27, -31, 31, 6, [], 0.6, 'concrete_dark'),
+];
+
+/** Behind each house, facing its own back door - you come through your house. */
+const CULDESAC_SPAWNS = [
+  [-6, -21, 0, 'mint yard'],
+  [2, -22, 0.15, 'mint yard 2'],
+  [6, 21, Math.PI, 'butter yard'],
+  [-2, 22, Math.PI - 0.15, 'butter yard 2'],
+  [-22, -18, 0.6, 'mint yard west'],
+  [22, 18, Math.PI + 0.6, 'butter yard east'],
+];
+
 export const ARENAS = {
+  /**
+   * 17.2 - a low afternoon sun down the length of the street, so the road is
+   * lit and both porches are in shade. That contrast is what a suburban street
+   * looks like and it is also the map's readability: a man standing in a
+   * doorway is a silhouette against his own front room.
+   */
+  culdesac: {
+    walls: CULDESAC,
+    spawns: CULDESAC_SPAWNS,
+    floor: [66, 60],
+    /**
+     * Dirt underneath, with the lawns laid on top as slabs (see CULDESAC).
+     * The grass generator makes a convincing hedge as a BOX and a blown-out
+     * beige field as a ground PLANE — the plane takes the sun flat across its
+     * whole area, and a foliage albedo with no normal variation under it has
+     * nothing to shade. Slabs are boxes, so they get the same edges and
+     * self-shadowing the hedges do.
+     */
+    ground: 'dirt',
+    sky: 17.2,
+    exposure: -0.35,
+    weather: {
+      cloudCoverage: 0.12,
+      cirrusCoverage: 0.24,
+      turbidity: 2.9,
+      horizonMurk: 0.1,
+    },
+  },
   /**
    * 15.4 — late afternoon. A desert map wants a low sun: it is what puts a long
    * shadow off every wall and separates the sand planes from each other. Miami
