@@ -206,6 +206,31 @@ export const DEFAULTS = {
    *                 anticipate is exactly what "not smooth" means.
    *   adsScale      time to get the sights up.
    */
+  /**
+   * AIMING. Squad's ICO in four numbers, and the reason a rifle here stops
+   * feeling like a mouse cursor with a model attached.
+   *
+   *   adsSway    share of the sway that SURVIVES raising the sights. CoD uses
+   *              ~0.2, which welds the weapon to the middle of the screen.
+   *   adsLag     same for the trailing swing while you turn.
+   *   settleSway extra sway right after moving, decaying over `settleTime` —
+   *              the sights arrive swinging, they do not arrive steady.
+   *   aimFollow  how much of the weapon's live pointing direction the BULLET
+   *              obeys. ICO's "rounds go exactly where the gun is pointing";
+   *              at 0 the sway is a decoration and the shot ignores it.
+   */
+  aiming: {
+    adsSway: 0.62,
+    adsLag: 0.55,
+    settleSway: 1.4,
+    settleTime: 1.5,
+    aimFollow: 0.75,
+    /** Sway multiplier while the breath is held; fades in over `breathIn`. */
+    breathHold: 0.25,
+    breathIn: 1.4,
+    breathMax: 5.5, // seconds you can hold it
+    breathRecover: 7,
+  },
   recoilScale: 1.5,
   climbScale: 1.1,
   adsFlipKeep: 0.18,

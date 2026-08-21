@@ -850,6 +850,30 @@ export class WeaponSystem {
   }
 
   /**
+   * HOLD BREATH — sprint key, while the sights are up.
+   *
+   * Two details from ICO, both of which are the point: the steadiness FADES IN
+   * over more than a second, so it rewards setting up rather than reacting, and
+   * the lungs run out. Coming off empty the recovery is slower than the hold
+   * was, so spamming it is worse than not using it.
+   */
+  _updateBreath(dt, want) {
+    const A = this.ctx.config.aiming ?? {};
+    const max = A.breathMax ?? 5.5;
+    if (this._breathLeft === undefined) this._breathLeft = max;
+    const holding = want && this._breathLeft > 0;
+    this._breathLeft = holding
+      ? Math.max(0, this._breathLeft - dt)
+      : Math.min(max, this._breathLeft + dt * (max / (A.breathRecover ?? 7)));
+    const t = this.viewmodel.holdBreathT ?? 0;
+    // In over `breathIn`, out in a third of that: you lose it faster than you
+    // find it, which is also true of breathing.
+    const rate = holding ? dt / (A.breathIn ?? 1.4) : -dt / ((A.breathIn ?? 1.4) / 3);
+    this.viewmodel.holdBreathT = Math.max(0, Math.min(1, t + rate));
+    this.holdingBreath = holding;
+  }
+
+  /**
    * MAG CHECK. With no round counter (see `hideCount`), the only way to know
    * what you are holding is to pull the magazine and look at it — so this plays
    * the inspect animation and answers the way witness holes answer: a bracket,
@@ -922,11 +946,27 @@ export class WeaponSystem {
     const yaw = s.pattern[idx * 2 + 1] * rs;
     this._shotIndex++;
 
-    // ---- aim: camera forward + a spread cone ----
+    // ---- aim: the BORE, plus a spread cone ----
+    // The weapon publishes the live pitch/yaw its sway, lag, bob and recoil
+    // have put it at (see viewmodel.aimOffset); the round leaves along that,
+    // not along the camera. This is what makes the sway something you fight
+    // rather than something you watch. `aimFollow` scales it, because the
+    // viewmodel is drawn at a viewmodel FOV and 1:1 would over-read.
     const cam = this.ctx.camera;
     cam.updateMatrixWorld();
     this._camDir.set(0, 0, -1).applyQuaternion(cam.quaternion).normalize();
     this._dir.copy(this._camDir);
+    const follow = this.ctx.config.aiming?.aimFollow ?? 0;
+    const off = this.viewmodel.aimOffset;
+    if (follow > 1e-4 && (off.x !== 0 || off.y !== 0)) {
+      this._right.set(1, 0, 0).applyQuaternion(cam.quaternion);
+      this._up.set(0, 1, 0).applyQuaternion(cam.quaternion);
+      // rx pitches the rig nose-DOWN in rig space, so it lifts the bore.
+      this._dir
+        .addScaledVector(this._up, Math.tan(off.x * follow))
+        .addScaledVector(this._right, Math.tan(-off.y * follow))
+        .normalize();
+    }
     const spreadRad = this._spread * DEG;
     if (spreadRad > 1e-5) {
       const d = this.rng.disc(this._disc ?? (this._disc = { x: 0, y: 0 }));
@@ -1193,6 +1233,7 @@ export class WeaponSystem {
       if (input.pressed('KeyB')) this.cycleFireMode();
       if (input.pressed('KeyI')) this.inspect();
       if (input.actionPressed('magCheck')) this.magCheck();
+      this._updateBreath(dt, input.action('sprint') && this.adsProgress > 0.5);
       if (input.pressed('Digit1')) this.setWeapon('rifle');
       if (input.pressed('Digit2')) this.setWeapon('smg');
       if (input.pressed('Digit3')) this.setWeapon('pistol');

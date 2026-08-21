@@ -373,6 +373,10 @@ export class Viewmodel {
     this._lhandTarget = new THREE.Vector3();
     this._lhandFinger = [0, 0, 0];
     this._lhandBack = [0, 0, 0];
+    /** Dynamic pitch/yaw of the weapon, radians — see the compose step. */
+    this.aimOffset = { x: 0, y: 0 };
+    this.settleT = 0;
+    this.holdBreathT = 0;
     this._muzzleWorld = new THREE.Vector3();
     this._muzzleDir = new THREE.Vector3();
     this._ejectWorld = new THREE.Vector3();
@@ -1008,10 +1012,18 @@ export class Viewmodel {
     // Damping, not amplitude, is what separates a heavy gun from a shaky one:
     // an underdamped spring returns past rest and comes back again, so a second
     // kick arrives out of phase with the next shot.
+    // THE SPRING HAS TO BE FASTER THAN THE GUN. An 800 rpm rifle lands 13.3
+    // shots a second; a 8.5 Hz spring has not finished the last one when the
+    // next arrives, so impulses stack at whatever phase they happen to catch —
+    // which is the chatter, and no amount of damping fixes a spring that is
+    // simply too slow. Floor it at 1.4x the cycle rate and each shot becomes a
+    // discrete rise and settle instead of a beat against the one before.
     const hipZ = cfg.recoilDamping ?? 0.74;
-    this.recPos.f = r.freq;
+    const rateHz = (w.def.rpm ?? 700) / 60;
+    const f0 = Math.max(r.freq, rateHz * 1.4);
+    this.recPos.f = f0;
     this.recPos.z = lerp(hipZ, 0.95, ads);
-    this.recRot.f = r.freq * 0.92;
+    this.recRot.f = f0 * 0.92;
     this.recRot.z = lerp(hipZ, 0.95, ads);
     // A velocity impulse of v0 on a spring of angular frequency w peaks at
     // roughly v0/w, so the kick amplitudes below are in real metres/radians.
@@ -1152,7 +1164,31 @@ export class Viewmodel {
     }
 
     /* -------- additive layers ------------------------------------------ */
-    const swayScale = def.swayScale * lerp(1, 0.22, ads) * lerp(1, 1.5, this.sprintT);
+    /**
+     * ADS DOES NOT KILL THE SWAY.
+     *
+     * 0.22 is the CoD contract: raising the sights welds the weapon to the
+     * middle of the screen and what is left is a decoration. Squad's ICO went
+     * the other way and it is the whole reason aiming there feels like holding
+     * something — the sway you fight is the sway you fight, aimed or not.
+     *
+     * `settleT` is the other half of it: coming off a sprint or a run, the
+     * sights do not arrive steady. They arrive swinging and take a second and a
+     * half to stop, so shooting immediately after moving is a choice with a
+     * cost rather than a free action.
+     */
+    const A = this.ctx.config.aiming ?? {};
+    const speedNow = s.speed ?? 0;
+    const disturb = clamp01(speedNow / 3.4) * (s.sprint ? 1.5 : 1);
+    this.settleT = this.settleT === undefined
+      ? 0
+      : Math.max(disturb, this.settleT - dt / (A.settleTime ?? 1.5));
+    const held = this.holdBreathT ?? 0;
+    const swayScale = def.swayScale
+      * lerp(1, A.adsSway ?? 0.22, ads)
+      * lerp(1, 1.5, this.sprintT)
+      * (1 + (A.settleSway ?? 1.4) * this.settleT)
+      * lerp(1, A.breathHold ?? 0.25, held);
     this.noiseT += dt;
     const n = this.noise;
     const nr = this.noiseRates;
@@ -1216,7 +1252,7 @@ export class Viewmodel {
     // A rifle held by a man who is turning is not a rifle bolted to a camera:
     // it trails, then swings past, then settles. The arcade fork wants that
     // small enough to shoot through; this one wants to feel the weight of it.
-    const lagScale = lerp(1, 0.2, ads) * (this.ctx.config.bodycam ? 1.75 : 1);
+    const lagScale = lerp(1, A.adsLag ?? 0.2, ads) * (this.ctx.config.bodycam ? 1.75 : 1);
     const av = this._angVel;
     this.lag.step(
       dt,
@@ -1275,6 +1311,19 @@ export class Viewmodel {
         this.stopClip();
       }
     }
+
+    /**
+     * ICO's headline, and the reason its sway means anything: the round leaves
+     * along the BORE, not along the camera. What is published here is only the
+     * DYNAMIC part of the weapon's orientation — sway, bob, lag, recoil, the
+     * reload clip — with the authored hip pose deliberately excluded, because
+     * that pose is a stylistic cant for the look of the thing and shooting
+     * along it would put every hip round two degrees off the screen.
+     *
+     * `weapons` rotates the fire direction by this. See `aimOffset`.
+     */
+    this.aimOffset.x = rx;
+    this.aimOffset.y = ry;
 
     /* -------- compose -------------------------------------------------- */
     this.rig.position.set(

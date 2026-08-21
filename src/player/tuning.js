@@ -265,7 +265,13 @@ export const CAMERA = {
   },
 
   recoil: {
-    freq: 9.5,
+    /**
+     * 14, not 9.5 — same reason as the viewmodel's spring (see addRecoil): at
+     * 800 rpm a 9.5 Hz spring is still travelling when the next round hits it.
+     * Above the cycle rate, each shot is a rise and a settle; below it, the
+     * shots beat against each other and the view chatters.
+     */
+    freq: 14,
     /**
      * 0.72, not 0.5. At 800 rpm a shot lands every 75 ms and this spring was
      * underdamped enough to return PAST rest and come back — so the view was
@@ -274,7 +280,7 @@ export const CAMERA = {
      * burst, and it is a damping problem, not an amplitude one. Still visibly
      * springy, but it settles between shots.
      */
-    damping: 0.72,
+    damping: 0.9,
     residualTau: 0.28,
     /**
      * The share of each shot's climb that does NOT come back on its own — the
