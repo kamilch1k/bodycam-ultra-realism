@@ -49,9 +49,17 @@ import { MENU_BG } from './menubg.js';
  * and Market Street were still building all along, they were just not a click
  * away any more.
  */
+/**
+ * THE ZONE FIRST, because it is the best-looking thing in the build: a low sun
+ * under a cirrus-streaked overcast, long shadows across sand, warm brick. Miami
+ * is more saturated but it reads as a painted blockout — bright purple and pink
+ * boxes on white concrete — and it is the arcade fork's map in tone as well as
+ * in origin. Shoot House is second and one click away: it is the kill-house
+ * shape this game's fights actually want (see DIRECTION.md), it is just grey.
+ */
 export const MAPS = [
-  { id: 'swat' }, { id: 'street' },
-  { id: 'miami' }, { id: 'outpost' }, { id: 'zone' },
+  { id: 'zone' }, { id: 'swat' }, { id: 'outpost' },
+  { id: 'miami' }, { id: 'street' },
 ];
 
 /**
