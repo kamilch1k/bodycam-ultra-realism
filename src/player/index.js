@@ -826,7 +826,7 @@ export class PlayerSystem {
      * calls this on close, the gunsmith calls it on exit, the modes call it
      * between rounds — and any of them landing during the death sequence would
      * put you back in control of a camera that is lying on the floor. Only
-     * `reviveFromDeath` ends a death.
+     * `respawn()` ends a death.
      */
     if (on && this.deathCam?.active) return;
     this.controlEnabled = !!on;
