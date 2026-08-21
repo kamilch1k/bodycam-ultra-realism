@@ -185,18 +185,32 @@ export const DEFAULTS = {
    *  that kill in one or two hits in BOTH directions. ?hardcore=0 for the A/B. */
   hardcore: true,
   /**
-   * WEAPON HANDLING WEIGHT. The arcade fork tuned aimed fire down to a clean
-   * push along the barrel with the muzzle flip, the vertical kick and the
-   * pitch taken out entirely — correct for a game you play with a thumb, and
-   * the reason a rifle here felt like a laser pointer. These put the mass back:
+   * WEAPON HANDLING WEIGHT.
    *
-   *   recoilScale   camera climb and viewmodel kick, both
-   *   adsFlipKeep   fraction of the muzzle flip that SURVIVES aiming (the
-   *                 arcade fork zeroes it; 0 is a gun that does not move)
-   *   adsScale      time to get the sights up
+   * MASS AND CLIMB ARE DIFFERENT AXES and scaling them together was wrong.
+   * What a heavy rifle does is shove itself REARWARD into your shoulder; what
+   * it does not have to do is throw the muzzle at the ceiling. One multiplier
+   * over both gave a gun that walked up the wall and, because the return
+   * springs are underdamped, oscillated on the way back down — 45% more
+   * amplitude on a spring that already overshoots is where the stutter came
+   * from, not the kick itself.
+   *
+   *   recoilScale   rearward push. Weight you feel, sight picture you keep.
+   *   climbScale    camera climb. Above ~1.15 a burst is unusable.
+   *   adsFlipKeep   share of the muzzle flip that survives aiming. The arcade
+   *                 fork zeroes it (a gun that does not move when fired);
+   *                 0.42 was a gun you could not hold on a torso.
+   *   recoilDamping return spring, hipfire. 0.74 is visibly springy — it does
+   *                 not settle between shots at 800 rpm, which reads as junk.
+   *   recoilJitter  shot-to-shot magnitude variation. Randomness you cannot
+   *                 anticipate is exactly what "not smooth" means.
+   *   adsScale      time to get the sights up.
    */
-  recoilScale: 1.45,
-  adsFlipKeep: 0.42,
+  recoilScale: 1.5,
+  climbScale: 1.1,
+  adsFlipKeep: 0.18,
+  recoilDamping: 0.88,
+  recoilJitter: 0.05,
   adsScale: 1.25,
   /** Global damage multiplier applied at the two hit-resolution sites (player
    *  -> agent, agent -> player). 33-damage rifle x 2.3 = 76 to the torso, so a

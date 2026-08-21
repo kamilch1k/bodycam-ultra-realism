@@ -266,9 +266,23 @@ export const CAMERA = {
 
   recoil: {
     freq: 9.5,
-    damping: 0.5,
+    /**
+     * 0.72, not 0.5. At 800 rpm a shot lands every 75 ms and this spring was
+     * underdamped enough to return PAST rest and come back — so the view was
+     * still moving from the last round when the next one hit it, in whatever
+     * direction it happened to be going. That is the chatter you feel through a
+     * burst, and it is a damping problem, not an amplitude one. Still visibly
+     * springy, but it settles between shots.
+     */
+    damping: 0.72,
     residualTau: 0.28,
-    residualShare: 0.34,
+    /**
+     * The share of each shot's climb that does NOT come back on its own — the
+     * part you have to pull down yourself. At 0.34 a mag walked the muzzle
+     * well above the target and stayed there; 0.22 still makes a long burst
+     * something you fight, without the gun ending up pointed at the ceiling.
+     */
+    residualShare: 0.22,
     /** Positional punch (camera pushed back along view) uses a stiffer spring. */
     punchFreq: 12,
     punchDamping: 0.62,

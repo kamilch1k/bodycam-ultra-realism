@@ -984,25 +984,35 @@ export class Viewmodel {
     // See config.recoilScale / adsFlipKeep: this fork keeps a share of the
     // flip under the sights, because a rifle that does not move when you fire
     // it aimed is the whole reason the gun read as weightless.
+    // See config: the rearward push carries the weight, the climb stays near
+    // stock, and the two are no longer the same number.
     const cfg = this.ctx.config;
     const keep = cfg.adsFlipKeep ?? 0;
     const heft = cfg.recoilScale ?? 1;
-    const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1) * heft;
+    const climb = cfg.climbScale ?? 1;
+    const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1);
     const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1) * heft;
-    const upScale = lerp(1, keep, ads) * (first ? 1.18 : 1) * heft;
-    const pitchScale = lerp(1, keep, ads) * (first ? 1.18 : 1) * heft;
+    const upScale = lerp(1, keep, ads) * (first ? 1.18 : 1) * climb;
+    const pitchScale = lerp(1, keep, ads) * (first ? 1.18 : 1) * climb;
     const lateralScale = lerp(0.5, 0.08, ads);
     // Hipfire cant was overdone: the gun visibly tipped on every shot.
     const rollScale = lerp(0.26, 0.12, ads);
     const yawScale = lerp(0.62, 0.25, ads);
     const driftScale = lerp(0.55, 0.12, ads);
-    // 1.0 = no shot-to-shot variation.
-    const jitter = lerp(0.93 + this.rng.float() * 0.14, 1, ads);
+    // 1.0 = no shot-to-shot variation. Narrow: a kick whose SIZE changes shot
+    // to shot cannot be anticipated, and an impulse you cannot anticipate is
+    // what reads as stutter rather than as texture.
+    const jw = cfg.recoilJitter ?? 0.14;
+    const jitter = lerp(1 - jw * 0.5 + this.rng.float() * jw, 1, ads);
 
+    // Damping, not amplitude, is what separates a heavy gun from a shaky one:
+    // an underdamped spring returns past rest and comes back again, so a second
+    // kick arrives out of phase with the next shot.
+    const hipZ = cfg.recoilDamping ?? 0.74;
     this.recPos.f = r.freq;
-    this.recPos.z = lerp(0.74, 0.92, ads);
+    this.recPos.z = lerp(hipZ, 0.95, ads);
     this.recRot.f = r.freq * 0.92;
-    this.recRot.z = lerp(0.74, 0.92, ads);
+    this.recRot.z = lerp(hipZ, 0.95, ads);
     // A velocity impulse of v0 on a spring of angular frequency w peaks at
     // roughly v0/w, so the kick amplitudes below are in real metres/radians.
     const wp = TAU * this.recPos.f;
