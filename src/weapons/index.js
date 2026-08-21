@@ -960,7 +960,8 @@ export class WeaponSystem {
     const p = this.player;
     if (p?.addRecoil) {
       // The camera climb is the learnable part; the viewmodel kick is the feel.
-      p.addRecoil(pitch, yaw, def.recoil.roll * 0.18, def.recoil.punch);
+      const heft = this.ctx.config.recoilScale ?? 1;
+      p.addRecoil(pitch * heft, yaw * heft, def.recoil.roll * 0.18 * heft, def.recoil.punch * heft);
     }
     this._spread = Math.min(def.spreadMax, this._spread + def.spreadPerShot);
     this._fireTimer = 60 / (def.rpm * (this.ctx.perks?.fireRateMult ?? 1));

@@ -312,10 +312,61 @@ export class ModeSystem {
     this.ctx = ctx;
     this.mode = createMode(ctx);
     if (this.mode) console.info(`[mode] ${ctx.config.mode}`);
+    this._deadFor = -1;
   }
 
   update(dt) {
-    this.mode?.update(dt);
+    if (this.mode) {
+      this.mode.update(dt);
+      return;
+    }
+    this._deathWatch(dt);
+  }
+
+  /**
+   * DYING HAS TO MEAN SOMETHING IN `tdm` TOO.
+   *
+   * `createMode` returns null for tdm/sandbox, and the round modes were the
+   * only things in the build that ever read `player.dead` — so at zero health
+   * the player was flagged dead, lost their hitbox and their sights, and then
+   * simply carried on walking around a level that had stopped being able to
+   * kill them. Death existed in the health model and nowhere else.
+   *
+   * The rules here are the round modes' rules minus the scoreboard: hold on the
+   * body for a beat so the hit that did it registers, clear the board — never
+   * respawn into the squad that just killed you — then put the player back and
+   * garrison the level again.
+   */
+  _deathWatch(dt) {
+    const player = this.ctx.peek?.('player');
+    if (!player?.dead) {
+      this._deadFor = -1;
+      return;
+    }
+    if (this._deadFor < 0) {
+      this._deadFor = 0;
+      player.setControlEnabled?.(false);
+      this.ctx.peek('ui')?.banner?.show?.('END OF RECORDING', 'KILLED IN ACTION', 3.2);
+      return;
+    }
+    this._deadFor += dt;
+    if (this._deadFor < DEATH_HOLD) return;
+    this._deadFor = -1;
+    const ai = this.ctx.peek('ai');
+    if (ai?.agents) {
+      for (const a of ai.agents) {
+        a.alive = false;
+        try {
+          a.dispose?.();
+        } catch {
+          /* a body that will not despawn must not stop the next engagement */
+        }
+      }
+      ai.agents.length = 0;
+    }
+    player.respawn?.();
+    player.setControlEnabled?.(true);
+    ai?.populate?.();
   }
 
   dispose() {

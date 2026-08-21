@@ -184,6 +184,20 @@ export const DEFAULTS = {
   /** Hardcore rules: no health regeneration, magazine-level ammo, and rounds
    *  that kill in one or two hits in BOTH directions. ?hardcore=0 for the A/B. */
   hardcore: true,
+  /**
+   * WEAPON HANDLING WEIGHT. The arcade fork tuned aimed fire down to a clean
+   * push along the barrel with the muzzle flip, the vertical kick and the
+   * pitch taken out entirely — correct for a game you play with a thumb, and
+   * the reason a rifle here felt like a laser pointer. These put the mass back:
+   *
+   *   recoilScale   camera climb and viewmodel kick, both
+   *   adsFlipKeep   fraction of the muzzle flip that SURVIVES aiming (the
+   *                 arcade fork zeroes it; 0 is a gun that does not move)
+   *   adsScale      time to get the sights up
+   */
+  recoilScale: 1.45,
+  adsFlipKeep: 0.42,
+  adsScale: 1.25,
   /** Global damage multiplier applied at the two hit-resolution sites (player
    *  -> agent, agent -> player). 33-damage rifle x 2.3 = 76 to the torso, so a
    *  fight is two rounds, not a magazine. */

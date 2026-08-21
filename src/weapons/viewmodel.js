@@ -981,10 +981,16 @@ export class Viewmodel {
      * narrowed to +-7% (was +-15%). Randomness you cannot anticipate is what
      * "unsmooth" means; a little is texture, a lot is noise.
      */
-    const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1);
-    const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1);
-    const upScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
-    const pitchScale = lerp(1, 0, ads) * (first ? 1.18 : 1);
+    // See config.recoilScale / adsFlipKeep: this fork keeps a share of the
+    // flip under the sights, because a rifle that does not move when you fire
+    // it aimed is the whole reason the gun read as weightless.
+    const cfg = this.ctx.config;
+    const keep = cfg.adsFlipKeep ?? 0;
+    const heft = cfg.recoilScale ?? 1;
+    const scale = lerp(1, 0.54, ads) * (first ? 1.18 : 1) * heft;
+    const backScale = lerp(1, 1.22, ads) * (first ? 1.18 : 1) * heft;
+    const upScale = lerp(1, keep, ads) * (first ? 1.18 : 1) * heft;
+    const pitchScale = lerp(1, keep, ads) * (first ? 1.18 : 1) * heft;
     const lateralScale = lerp(0.5, 0.08, ads);
     // Hipfire cant was overdone: the gun visibly tipped on every shot.
     const rollScale = lerp(0.26, 0.12, ads);
@@ -1082,7 +1088,7 @@ export class Viewmodel {
     this._hasPrev = true;
 
     /* -------- blends --------------------------------------------------- */
-    const adsRate = 1 / Math.max(0.05, def.adsTime);
+    const adsRate = 1 / Math.max(0.05, def.adsTime * (this.ctx.config.adsScale ?? 1));
     const wantAds = this.clip && this.clip.name !== 'draw' ? 0 : s.ads ? 1 : 0;
     this.adsTarget = wantAds;
     // Linear rate with a smootherstep shaping: a spring here reads as mushy.
