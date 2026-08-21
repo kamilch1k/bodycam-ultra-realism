@@ -225,6 +225,9 @@ export const DEFAULTS = {
     settleSway: 1.4,
     settleTime: 1.5,
     aimFollow: 0.75,
+    /** Weapon mass against the body's acceleration — see viewmodel.js. */
+    moveInertia: 1.0,
+    adsInertia: 0.7,
     /** Sway multiplier while the breath is held; fades in over `breathIn`. */
     breathHold: 0.25,
     breathIn: 1.4,

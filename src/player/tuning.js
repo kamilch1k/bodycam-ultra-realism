@@ -266,14 +266,20 @@ export const CAMERA = {
 
   recoil: {
     /**
-     * 11 and CRITICALLY DAMPED (see addRecoil in viewmodel.js for the long
-     * version). Pushing this to 14 to outrun an 800 rpm rifle just moved the
-     * problem: an oscillation that fast is only sampled four or five times a
-     * cycle at 60 fps, so the display becomes the thing you notice. A spring
-     * that never overshoots has no phase to beat against, which is what the
-     * frequency was trying to fix.
+     * 5.5, critically damped, driven through a target (see RecoilAxis.kick).
+     *
+     * The number was chased in the wrong direction twice. 14 Hz was an attempt
+     * to outrun an 800 rpm rifle, which cannot work: at 60 fps that is four
+     * samples a cycle and you see the sampling. What was actually wrong is that
+     * the kick was a DISPLACEMENT — the whole climb landed inside one frame,
+     * which is a teleport with a spring attached to the far end of it.
+     *
+     * Measured over a simulated shot at 60 fps: this rises to 0.76 deg over
+     * five frames with no frame carrying more than a third of it, and a full
+     * magazine plateaus at 2.8 deg of camera climb. The old instant kick put
+     * 100% of a smaller number on screen in a single frame.
      */
-    freq: 11,
+    freq: 5.5,
     /**
      * 0.72, not 0.5. At 800 rpm a shot lands every 75 ms and this spring was
      * underdamped enough to return PAST rest and come back — so the view was

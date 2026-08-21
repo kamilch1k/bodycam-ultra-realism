@@ -146,6 +146,8 @@ export class WeaponSystem {
       sprint: false,
       lowReady: false,
       speed: 0,
+      vx: 0,
+      vz: 0,
       crouch: false,
       airborne: false,
       trigger: false,
@@ -1222,6 +1224,22 @@ export class WeaponSystem {
     st.ads = live ? input.ads || player?.adsRequested === true : this.debugMode === 'ads';
     st.sprint = live ? player?.sprinting === true && this._sinceShot > 0.3 : false;
     st.speed = player?.horizontalSpeed ?? player?.speed ?? 0;
+    /**
+     * Velocity in CAMERA space, for the weapon's movement inertia. Lateral and
+     * forward are what the arms have to fight when you start, stop or reverse;
+     * a steady jog is no work at all, which is why this is a velocity the
+     * viewmodel differences rather than a speed it scales by.
+     */
+    const pv = player?.velocity;
+    if (pv) {
+      const yaw = player.yaw ?? 0;
+      const sy = Math.sin(yaw), cy = Math.cos(yaw);
+      st.vx = pv.x * cy - pv.z * sy;
+      st.vz = -(pv.x * sy + pv.z * cy);
+    } else {
+      st.vx = 0;
+      st.vz = 0;
+    }
     st.crouch = player?.stance === 'crouch';
     st.airborne = player?.airborne === true;
     st.lowReady = player?.state === 'mantle' || player?.mantling === true;

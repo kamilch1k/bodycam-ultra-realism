@@ -61,9 +61,12 @@ export class CameraRig {
     this.recoilRoll = new RecoilAxis(C.recoil.freq * 0.86, C.recoil.damping + 0.1, C.recoil.residualTau, 0.24);
     this.punch = new Spring(C.recoil.punchFreq, C.recoil.punchDamping, 0);
     /** Second, independent channel: `weapons` pushes into this one. */
-    this.kickPitch = new RecoilAxis(11, 0.58, 0.22, 0.28);
-    this.kickYaw = new RecoilAxis(11.5, 0.6, 0.22, 0.28);
-    this.kickRoll = new RecoilAxis(9, 0.62, 0.22, 0.22);
+    // Same shape as the recoil channel above, for the same reason: critically
+    // damped so nothing beats against the next shot, slow enough that the rise
+    // is something the display can draw.
+    this.kickPitch = new RecoilAxis(6, 1.0, 0.22, 0.28);
+    this.kickYaw = new RecoilAxis(6.3, 1.0, 0.22, 0.28);
+    this.kickRoll = new RecoilAxis(5, 1.0, 0.22, 0.22);
 
     // ---- rolls -----------------------------------------------------------
     this.strafeRoll = 0;

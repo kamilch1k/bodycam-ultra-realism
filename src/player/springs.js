@@ -152,25 +152,53 @@ export class RecoilAxis {
     this.residual = 0;
     this.residualTau = residualTau;
     this.residualShare = residualShare;
+    /** How long the muzzle is being driven for — the rise, not the return. */
+    this.attackTau = 0.085;
+    this.residualTarget = 0;
     this.value = 0;
   }
 
   reset() {
     this.spring.reset(0);
+    this.spring.target = 0;
     this.residual = 0;
+    this.residualTarget = 0;
     this.value = 0;
   }
 
-  /** `amount` is an angle in radians (or metres for a positional axis). */
+  /**
+   * `amount` is an angle in radians (or metres for a positional axis).
+   *
+   * THIS MOVES THE TARGET, NOT THE VALUE. The old version added straight to
+   * `spring.value`, which is not motion at all — it is a teleport: one frame
+   * the view is here, the next it is 1.5 degrees higher, with nothing in
+   * between. That is the "jumps up" in a recoil that is otherwise smooth, and
+   * it is why the gun (whose springs take velocity impulses) always looked
+   * better than the camera it was attached to.
+   *
+   * Pushing the TARGET instead makes the spring travel: the view climbs over
+   * the spring's rise time — 30-40 ms, two or three frames — and comes back as
+   * the target decays. Squad and the bodycam games get this shape from
+   * animation; a spring chasing a decaying target is the same curve for none of
+   * the authoring.
+   */
   kick(amount) {
-    // A displacement kick reads snappier than a velocity kick for recoil.
-    this.spring.value += amount * (1 - this.residualShare);
-    this.residual += amount * this.residualShare;
+    this.spring.target += amount * (1 - this.residualShare);
+    // The residual is driven the same way, for the same reason: adding it to
+    // the VALUE put a third of every shot's climb on screen inside one frame,
+    // no matter how smoothly the spring half was moving. Both halves are
+    // targets now, so nothing in a recoil is ever a step.
+    this.residualTarget += amount * this.residualShare;
   }
 
   step(dt) {
+    // The target is where the muzzle is being driven RIGHT NOW; it bleeds off
+    // faster than the spring chases it, so a single shot is a rise and a
+    // settle, and a burst is a climb rather than a staircase.
+    this.spring.target = approach(this.spring.target, 0, this.attackTau, dt);
     this.spring.step(dt);
-    this.residual = approach(this.residual, 0, this.residualTau, dt);
+    this.residual = approach(this.residual, this.residualTarget, this.attackTau, dt);
+    this.residualTarget = approach(this.residualTarget, 0, this.residualTau, dt);
     this.value = this.spring.value + this.residual;
     return this.value;
   }

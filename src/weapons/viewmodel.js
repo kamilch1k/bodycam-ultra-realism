@@ -1248,6 +1248,33 @@ export class Viewmodel {
     rx += Math.cos(bp * 2) * 0.014 * bobAmt;
     ry += Math.sin(bp + 0.6) * 0.019 * bobAmt;
 
+    /* -------- movement inertia ----------------------------------------- */
+    /**
+     * The gun weighs three and a half kilos and your arms are not bolted to
+     * your hips. Starting, stopping and reversing a strafe all leave the muzzle
+     * behind for a moment and then let it swing into place — which is most of
+     * what "alive while moving" is, and none of it is in a bob curve, because a
+     * bob is periodic and this is a response to ACCELERATION.
+     *
+     * Built by differencing the body's velocity against a lagged copy of
+     * itself: a steady jog produces nothing, a direction change produces the
+     * lot.
+     */
+    const iner = (A.moveInertia ?? 0) * lerp(1, A.adsInertia ?? 0.7, ads);
+    if (iner > 1e-4) {
+      const vx = s.vx ?? 0;
+      const vz = s.vz ?? 0;
+      this._vlx = damp(this._vlx ?? vx, vx, 5.5, dt);
+      this._vlz = damp(this._vlz ?? vz, vz, 5.5, dt);
+      const ax = clamp(vx - this._vlx, -4, 4);
+      const az = clamp(vz - this._vlz, -4, 4);
+      px -= ax * 0.014 * iner;
+      pz -= az * 0.011 * iner;
+      ry -= ax * 0.030 * iner;
+      rx += az * 0.016 * iner;
+      rz -= ax * 0.022 * iner;
+    }
+
     /* -------- weapon lag ---------------------------------------------- */
     /**
      * Lag is halved again when aimed. It is driven by a per-frame angular
