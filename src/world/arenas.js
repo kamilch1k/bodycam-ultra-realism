@@ -885,98 +885,254 @@ const OUTPOST_SPAWNS = [
  *  The oldest shape in the genre and the reason it keeps being rebuilt: two
  *  mirrored houses facing each other across a road, spawns in the back yards,
  *  and something big parked in the middle of the street so the centre lane is
- *  contested rather than a shooting gallery. Nuketown is the famous one; the
- *  pattern predates it and every arena shooter has a version.
+ *  contested rather than a shooting gallery.
  *
- *  THREE LANES, and they are different fights. The STREET is fast and open and
- *  the bus is the only thing that makes crossing it survivable. The two HOUSES
- *  are close-quarters rooms with two ways in each, which is where this game's
- *  weapon handling actually pays. The BACK YARDS are the flank: slower, fenced,
- *  and they arrive behind the other team rather than in front of it.
+ *  THREE LANES, three different fights. The STREET is fast and open and the bus
+ *  is the only thing that makes crossing it survivable. The HOUSES are two
+ *  storeys of close-quarters rooms with two ways into each, which is where this
+ *  game's weapon handling actually pays - and the upstairs windows look down
+ *  onto the road, so holding a house is worth something. The BACK YARDS are the
+ *  flank: fenced at 1.9 m so they cannot be shot into from the street, with one
+ *  gap at each end that is the real route.
  *
- *  MIRRORED, NOT SYMMETRICAL. Both sides get the same shapes and the same
- *  timings, but the porch, the garage bay and the yard clutter are swapped end
- *  for end, so the two halves stay tellable apart at a glance. A map you cannot
- *  orient yourself in is one you die in for reasons you cannot name.
+ *  MIRRORED, NOT SYMMETRICAL. Both sides get the same shapes and timings, but
+ *  the porch, the garage bay and the yard clutter swap end for end, so the two
+ *  halves stay tellable apart at a glance. A map you cannot orient yourself in
+ *  is one you die in for reasons you cannot name.
  *
- *  NO ROOFS, like every other arena here. The lighting model in this build puts
- *  the sun and the sky on open geometry, and a sealed box interior is a black
- *  room. The porch canopies give the houses their silhouette; the rooms are open
- *  to the sky the way a shoot house is.
+ *  THE GROUND FLOOR IS ROOFED AND LIT; THE UPPER FLOOR IS OPEN TO THE SKY.
+ *  A sealed box interior in this build is a black room - the lighting model puts
+ *  the sun and the sky on open geometry - so the first floor slab that gives the
+ *  house its second storey would have made the ground floor unplayable. Each
+ *  house therefore carries two practicals downstairs (`lights`, below, which
+ *  buildArena hands to the world's interior-bulb pass), and the upper rooms take
+ *  the real sun. From the street it reads as a two-storey house; from directly
+ *  above it is a shoot house, like every other arena here.
  *
- *  Distances: 42 m spawn to spawn, 11 m of street to cross, cover at 1.1 m all
- *  the way along it. First contact lands inside ten seconds; the crossing stays
- *  a decision.
+ *  Distances: 42 m spawn to spawn, 11 m of street to cross, cover at 1.1 m the
+ *  whole way along it.
  * -------------------------------------------------------------------------- */
 
-/** One suburban house: four walls, a dividing wall, a garage bay and a porch. */
-function house(cx, cz, flip, siding) {
-  const s = flip ? -1 : 1;
-  const W = 18; // frontage, x
-  const D = 11; // depth, z
-  const H = 3.4;
-  const x0 = cx - W / 2;
-  const x1 = cx + W / 2;
-  const zFront = cz + (D / 2) * s; // the side facing the street
-  const zBack = cz - (D / 2) * s;
+const H_GROUND = 3.0;   // ground floor, floor to ceiling
+const H_SLAB = 0.28;    // the first floor itself
+const H_UPPER = 2.8;    // upper floor walls
+const Y_UPPER = H_GROUND + H_SLAB;
+
+/**
+ * A wall with WINDOW openings rather than doorways: a sill course below and a
+ * header above, so the gap is a hole in the middle of the wall instead of a
+ * gap to the floor. `wall()` cannot do this - it cuts full height, which is a
+ * door - and a house with no windows reads as a bunker.
+ */
+function pierced(axis, fixed, a, b, h, wins, t, mat, y = 0, sill = 0.95, head = 2.15) {
   const out = [];
-
-  // Front wall: the door onto the porch, offset toward the living-room end so
-  // the entry is not on the same line as the hall.
-  out.push(...wall('x', zFront, x0, x1, H, [cx - 4 * s], WALL_T, siding));
-  // Back wall: the kitchen door onto the yard. Two ways in, always.
-  out.push(...wall('x', zBack, x0, x1, H, [cx + 5 * s], WALL_T, siding));
-  // Side walls. The garage end is open to the street side, so the garage is a
-  // route through the house rather than a cupboard.
-  out.push(...wall('z', x0, cz - D / 2, cz + D / 2, H, [], WALL_T, siding));
-  out.push(...wall('z', x1, cz - D / 2, cz + D / 2, H, [cz + 2 * s], WALL_T, siding));
-
-  // Interior: hall wall with one doorway, splitting the rooms from the garage.
-  out.push(...wall('z', cx + 3 * s, cz - D / 2 + 0.2, cz + D / 2 - 0.2, H, [cz], WALL_T, 'plaster_white'));
-  // A shorter wall makes the far room an L rather than a box, so a defender
-  // cannot hold the whole interior from one corner.
-  const inner = [x0 + 0.2, cx - 2 * s].sort((a, b) => a - b);
-  out.push(...wall('x', cz - 1.5 * s, inner[0], inner[1], H, [cx - 6 * s], WALL_T, 'plaster_white'));
-
-  // Porch: a canopy on two posts. The only overhead geometry on the map, and
-  // what makes a house read as a house from across the street.
-  out.push([cx - 4 * s, zFront + 2.2 * s, 6.4, 3.0, 0.4, 0, 'concrete_prop']);
-  out.push([cx - 4 * s, zFront + 1.9 * s, 6.4, 3.4, 0.22, 0, 'wood_pale', 3.2]);
-  out.push([cx - 6.6 * s, zFront + 3.3 * s, 0.26, 0.26, 3.2, 0, 'wood_pale']);
-  out.push([cx - 1.4 * s, zFront + 3.3 * s, 0.26, 0.26, 3.2, 0, 'wood_pale']);
-
-  // Furniture at cover height: counter, sofa, bed.
-  out.push([cx + 5.5 * s, cz - 2 * s, 4.4, 1.0, 1.1, 0, 'wood_prop']);
-  out.push([cx - 5 * s, cz + 1.5 * s, 3.0, 1.4, 1.0, 0, 'fabric_teal']);
-  out.push([cx - 6 * s, cz - 3 * s, 2.2, 1.8, 0.7, 0, 'fabric_cream']);
+  // sill course: full length, up to the sill line, with the window spans left in
+  out.push(...wall(axis, fixed, a, b, sill, [], t, mat, y));
+  // header: from the top of the opening to the top of the wall
+  out.push(...wall(axis, fixed, a, b, h - head, [], t, mat, y + head));
+  // piers: the wall between the windows, sill to header
+  const edges = [a];
+  for (const w of wins) edges.push(w - 0.75, w + 0.75);
+  edges.push(b);
+  for (let i = 0; i < edges.length; i += 2) {
+    const s = edges[i];
+    const e = edges[i + 1];
+    if (e - s <= 0.05) continue;
+    const mid = (s + e) / 2;
+    if (axis === 'x') out.push([mid, fixed, e - s, t, head - sill, 0, mat, y + sill]);
+    else out.push([fixed, mid, t, e - s, head - sill, 0, mat, y + sill]);
+  }
+  // the glass itself, thin and inset
+  for (const w of wins) {
+    if (axis === 'x') out.push([w, fixed, 1.5, t * 0.4, head - sill, 0, 'window_glass', y + sill]);
+    else out.push([fixed, w, t * 0.4, 1.5, head - sill, 0, 'window_glass', y + sill]);
+  }
   return out;
 }
 
 /**
- * Bus, pickup and sedan, from boxes. Tall enough to break the sightline down
- * the street, low enough to shoot over from a porch step - that difference is
- * the whole tension of the middle lane.
+ * One suburban house, two storeys.
+ *
+ *   ground   living room + kitchen + hall, a garage bay open to the drive,
+ *            a porch with a canopy, doors front and back
+ *   stairs   in the hall, against the party wall, 3.0 m over a 3.4 m run
+ *   upper    two bedrooms and a landing, windows over the street, a balcony
+ *            above the porch roof
  */
-function vehicles() {
+function house(cx, cz, flip, siding, trim) {
+  const s = flip ? -1 : 1;
+  const W = 18;
+  const D = 12;
+  const x0 = cx - W / 2;
+  const x1 = cx + W / 2;
+  const zFront = cz + (D / 2) * s;
+  const zBack = cz - (D / 2) * s;
+  const out = [];
+
+  /* ---- ground floor ---------------------------------------------------- */
+  // Front: door onto the porch, two windows either side of it.
+  out.push(...wall('x', zFront, x0, cx - 6.2 * s, H_GROUND, [], WALL_T, siding));
+  out.push(...wall('x', zFront, cx - 6.2 * s, cx + 1.4 * s, H_GROUND, [cx - 4 * s], WALL_T, siding));
+  out.push(...pierced('x', zFront, cx + 1.4 * s, x1, H_GROUND, [cx + 5 * s], WALL_T, siding));
+  // Back: kitchen door onto the yard, one window.
+  out.push(...pierced('x', zBack, x0, cx + 2 * s, H_GROUND, [cx - 5 * s], WALL_T, siding));
+  out.push(...wall('x', zBack, cx + 2 * s, x1, H_GROUND, [cx + 5 * s], WALL_T, siding));
+  // Sides. The garage bay is the gap in the street-side end wall.
+  out.push(...pierced('z', x0, cz - D / 2, cz + D / 2, H_GROUND, [cz - 2 * s], WALL_T, siding));
+  out.push(...wall('z', x1, cz - D / 2, cz + D / 2, H_GROUND, [cz + 3 * s], WALL_T, siding));
+  // Garage door, up-and-over: the header above the bay, so the opening reads as
+  // a garage rather than as a hole where a wall should be.
+  out.push([x1, cz + 3 * s, WALL_T, 3.2, 0.7, 0, trim, 2.3]);
+
+  // Interior: hall wall with a doorway, and a short return that makes the
+  // living room an L - a defender cannot hold the whole floor from one corner.
+  out.push(...wall('z', cx + 3 * s, cz - D / 2 + 0.2, cz + D / 2 - 0.2, H_GROUND, [cz], WALL_T, 'plaster_white'));
+  const inner = [x0 + 0.2, cx - 2 * s].sort((a, b) => a - b);
+  out.push(...wall('x', cz - 1.5 * s, inner[0], inner[1], H_GROUND, [cx - 6 * s], WALL_T, 'plaster_white'));
+
+  /* ---- the first floor slab -------------------------------------------- */
+  // Whole footprint except the stairwell, which is the void the stairs climb
+  // through. Two slabs with a gap rather than one with a hole punched in it.
+  const stairX = cx + 4.6 * s;
+  out.push([cx - 3.9 * s, cz, 10.2, D, H_SLAB, 0, 'wood_pale', H_GROUND]);
+  out.push([cx + 6.6 * s, cz, 4.8, D, H_SLAB, 0, 'wood_pale', H_GROUND]);
+  out.push([stairX, cz - 4.4 * s, 3.2, 3.2, H_SLAB, 0, 'wood_pale', H_GROUND]);
+
+  /* ---- stairs ----------------------------------------------------------- */
+  // Eight treads, 0.375 m each. Rising along +z*s so you come up facing the
+  // landing rather than a wall.
+  for (let i = 0; i < 8; i++) {
+    out.push([stairX, cz - 2.6 * s + i * 0.42 * s, 3.0, 0.42, 0.375 * (i + 1), 0, 'wood_prop']);
+  }
+
+  /* ---- upper floor ------------------------------------------------------ */
+  // Street-facing wall: two bedroom windows looking down onto the road. This is
+  // the whole point of the second storey.
+  out.push(...pierced('x', zFront, x0, x1, H_UPPER, [cx - 5 * s, cx + 4 * s], WALL_T, siding, Y_UPPER));
+  out.push(...pierced('x', zBack, x0, x1, H_UPPER, [cx - 3 * s], WALL_T, siding, Y_UPPER));
+  out.push(...pierced('z', x0, cz - D / 2, cz + D / 2, H_UPPER, [cz + 2 * s], WALL_T, siding, Y_UPPER));
+  out.push(...pierced('z', x1, cz - D / 2, cz + D / 2, H_UPPER, [cz - 2 * s], WALL_T, siding, Y_UPPER));
+  // Bedroom divider, one doorway.
+  out.push(...wall('z', cx - 1 * s, cz - D / 2 + 0.2, cz + D / 2 - 0.2, H_UPPER, [cz + 3 * s], WALL_T, 'plaster_white', Y_UPPER));
+
+  /* ---- porch and balcony ------------------------------------------------ */
+  const porchZ = zFront + 2.0 * s;
+  out.push([cx - 4 * s, zFront + 2.2 * s, 6.6, 3.0, 0.4, 0, 'concrete_prop']);          // step
+  out.push([cx - 4 * s, porchZ, 6.6, 3.6, 0.25, 0, trim, H_GROUND]);                    // porch roof / balcony floor
+  out.push([cx - 6.9 * s, porchZ + 1.5 * s, 0.24, 0.24, H_GROUND, 0, trim]);            // posts
+  out.push([cx - 1.1 * s, porchZ + 1.5 * s, 0.24, 0.24, H_GROUND, 0, trim]);
+  // Balcony rail: waist height, so upstairs is cover you can shoot over.
+  out.push([cx - 4 * s, porchZ + 1.7 * s, 6.6, 0.14, 1.0, 0, trim, H_GROUND + 0.25]);
+  out.push([cx - 7.1 * s, porchZ, 0.14, 3.6, 1.0, 0, trim, H_GROUND + 0.25]);
+  out.push([cx - 0.9 * s, porchZ, 0.14, 3.6, 1.0, 0, trim, H_GROUND + 0.25]);
+  // Balcony door out of the front bedroom.
+  out.push([cx - 4 * s, zFront, 2.2, WALL_T * 1.1, 0.6, 0, siding, Y_UPPER + 2.2]);
+
+  /* ---- fittings --------------------------------------------------------- */
+  out.push([cx + 5.5 * s, cz - 3 * s, 4.4, 1.0, 1.1, 0, 'wood_prop']);                  // kitchen counter
+  out.push([cx - 5 * s, cz + 1.5 * s, 3.0, 1.4, 1.0, 0, 'fabric_teal']);                // sofa
+  out.push([cx - 6.5 * s, cz - 3 * s, 2.2, 1.8, 0.7, 0, 'fabric_cream']);               // bed, ground floor spare
+  out.push([cx - 5 * s, cz - 3.5 * s, 2.2, 1.8, 0.65, 0, 'fabric_cream', Y_UPPER]);     // bed, upstairs
+  out.push([cx + 4 * s, cz + 3.5 * s, 1.8, 0.7, 0.8, 0, 'wood_prop_dark', Y_UPPER]);    // dresser
+  // Air-conditioning unit and a satellite dish on the street-side wall: the two
+  // silhouettes that stop a flat facade reading as a flat facade.
+  out.push([x1 + 0.5, cz - 4.5 * s, 1.0, 1.0, 0.9, 0, 'metal_dark', 0.25]);
+  out.push([x1 + 0.35, cz + 4 * s, 0.7, 0.7, 0.7, 0.4, 'plaster_white', Y_UPPER + 1.6]);
+  return out;
+}
+
+/**
+ * A car, from ten boxes.
+ *
+ * The trick is not detail, it is PROPORTION: a car is a low body with a
+ * narrower, inset cabin, four wheels that show under the sills, and glass that
+ * is not the same colour as the paint. A single box at car height reads as a
+ * skip. Wheels are separate rows because the shadow under a car is most of what
+ * makes it look like it is resting on the road rather than floating over it.
+ *
+ * @param L body length, @param Wd body width, @param sedan false = pickup bed
+ */
+function car(cx, cz, ry, paint, L = 4.6, Wd = 2.0, sedan = true) {
+  const c = Math.cos(ry);
+  const sn = Math.sin(ry);
+  // local (along-length, across) -> world, so a rotated car stays a car
+  const at = (u, v) => [cx + u * c - v * sn, cz + u * sn + v * c];
+  const out = [];
+  const [bx, bz] = at(0, 0);
+  out.push([bx, bz, L, Wd, 0.42, ry, paint, 0.34]);                       // sills
+  out.push([bx, bz, L * 0.96, Wd * 0.92, 0.34, ry, paint, 0.76]);         // body
+  const [hx, hz] = at(L * 0.3, 0);
+  out.push([hx, hz, L * 0.34, Wd * 0.86, 0.16, ry, paint, 1.10]);         // bonnet
+  const [cbx, cbz] = at(-L * 0.06, 0);
+  const cabL = sedan ? L * 0.44 : L * 0.32;
+  out.push([cbx, cbz, cabL, Wd * 0.82, 0.62, ry, 'window_glass', 1.10]);  // glasshouse
+  out.push([cbx, cbz, cabL * 0.9, Wd * 0.86, 0.12, ry, paint, 1.72]);     // roof
+  if (!sedan) {
+    const [tx, tz] = at(-L * 0.32, 0);
+    out.push([tx, tz, L * 0.36, Wd * 0.9, 0.36, ry, paint, 1.10]);        // pickup bed sides
+  }
+  // wheels
+  for (const [u, v] of [[L * 0.32, Wd * 0.44], [L * 0.32, -Wd * 0.44],
+    [-L * 0.32, Wd * 0.44], [-L * 0.32, -Wd * 0.44]]) {
+    const [wx, wz] = at(u, v);
+    out.push([wx, wz, 0.72, 0.28, 0.68, ry, 'rubber', 0.0]);
+  }
+  // bumpers, front and back
+  const [fx, fz] = at(L * 0.5, 0);
+  const [rx2, rz2] = at(-L * 0.5, 0);
+  out.push([fx, fz, 0.22, Wd * 0.95, 0.3, ry, 'metal_dark', 0.5]);
+  out.push([rx2, rz2, 0.22, Wd * 0.95, 0.3, ry, 'metal_dark', 0.5]);
+  return out;
+}
+
+/** The bus: the map's centrepiece, and the only thing that makes the road
+ *  crossable. Same rules as the car, at three times the length. */
+function bus(cx, cz, ry) {
+  const c = Math.cos(ry);
+  const sn = Math.sin(ry);
+  const at = (u, v) => [cx + u * c - v * sn, cz + u * sn + v * c];
+  const L = 11.2;
+  const Wd = 2.6;
+  const out = [];
+  out.push([cx, cz, L, Wd, 0.5, ry, 'metal_dark', 0.28]);                 // chassis
+  out.push([cx, cz, L, Wd, 1.05, ry, 'metal_yellow', 0.78]);              // lower body
+  out.push([cx, cz, L * 0.98, Wd * 0.98, 0.72, ry, 'window_glass', 1.83]); // window band
+  out.push([cx, cz, L, Wd, 0.45, ry, 'metal_yellow', 2.55]);              // roof band
+  out.push([cx, cz, L * 0.9, Wd * 0.86, 0.12, ry, 'metal_dark', 3.0]);    // roof ribs
+  const [nx, nz] = at(L * 0.5, 0);
+  out.push([nx, nz, 0.3, Wd, 1.9, ry, 'metal_yellow', 0.5]);              // nose
+  for (const [u, v] of [[L * 0.36, Wd * 0.46], [L * 0.36, -Wd * 0.46],
+    [-L * 0.3, Wd * 0.46], [-L * 0.3, -Wd * 0.46]]) {
+    const [wx, wz] = at(u, v);
+    out.push([wx, wz, 1.0, 0.34, 0.95, ry, 'rubber', 0.0]);
+  }
+  return out;
+}
+
+/** Street lamp: pole, arm, lens. The lens is the emissive bit the world's
+ *  practical pass lights up after dusk. */
+function lamp(x, z, flip) {
+  const s = flip ? -1 : 1;
   return [
-    // THE BUS, across the middle at a slight angle so neither end of the street
-    // gets a clean line down it.
-    [0, 0, 11.0, 2.4, 0.55, 0.16, 'metal_dark'],
-    [0, 0, 11.6, 2.7, 2.35, 0.16, 'metal_yellow', 0.55],
-    [-3.6, 0.75, 3.0, 2.5, 0.5, 0.16, 'glass', 2.9],
-    // pickup, north-east end
-    [16, -2.2, 5.0, 2.0, 0.45, -0.3, 'metal_dark'],
-    [16, -2.2, 5.2, 2.2, 1.0, -0.3, 'metal_blue', 0.45],
-    [16.9, -2.5, 2.2, 2.1, 0.95, -0.3, 'metal_blue', 1.45],
-    // sedan, south-west end
-    [-17, 2.4, 4.2, 1.9, 0.4, 0.22, 'metal_dark'],
-    [-17, 2.4, 4.4, 2.0, 0.85, 0.22, 'metal_green', 0.4],
-    [-17.3, 2.4, 2.4, 1.9, 0.7, 0.22, 'glass', 1.25],
+    [x, z, 0.22, 0.22, 6.2, 0, 'metal_dark'],
+    [x, z + 0.8 * s, 0.16, 1.8, 0.16, 0, 'metal_dark', 6.0],
+    [x, z + 1.6 * s, 0.5, 0.8, 0.18, 0, 'lamp_lens', 5.85],
+  ];
+}
+
+/** Power pole with a crossarm, and the wire to the next one. Suburban skyline
+ *  in four boxes; the wire is a 6 cm bar, which is all it needs to be. */
+function pole(x, z) {
+  return [
+    [x, z, 0.28, 0.28, 8.0, 0, 'wood_prop_dark'],
+    [x, z, 2.4, 0.16, 0.16, 0, 'wood_prop_dark', 7.2],
+    [x, z, 1.6, 0.14, 0.14, 0, 'wood_prop_dark', 6.6],
+    [x + 9, z, 18, 0.06, 0.06, 0, 'metal_dark', 7.3],
   ];
 }
 
 const CULDESAC = [
-  // ---- lawns, then road over them -----------------------------------------
+  // ---- lawns, then the road over them -------------------------------------
   // Front verges between kerb and porch, and the two back yards. Laid first so
   // the drives and the kerbs sit on top where they overlap.
   [0, -11, 58, 8.6, 0.05, 0, 'lawn'],
@@ -984,42 +1140,69 @@ const CULDESAC = [
   [0, -20, 50, 12, 0.05, 0, 'lawn'],
   [0, 20, 50, 12, 0.05, 0, 'lawn'],
 
-  // ---- road, kerbs and drives, as thin slabs on the ground ----------------
+  // ---- road, kerbs, drives, markings --------------------------------------
   [0, 0, 58, 11, 0.06, 0, 'asphalt'],
   [0, -6.2, 58, 2.4, 0.16, 0, 'concrete_prop'],
   [0, 6.2, 58, 2.4, 0.16, 0, 'concrete_prop'],
   [10, -10, 6.5, 6, 0.1, 0, 'concrete_prop'],
   [-10, 10, 6.5, 6, 0.1, 0, 'concrete_prop'],
+  // centre line, dashed. Nothing says "road" faster and it costs nine boxes.
+  [-24, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [-18, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [-12, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [-6, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [12, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [18, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [24, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
 
-  // ---- the two houses -----------------------------------------------------
-  ...house(-2, -14, false, 'siding_mint'),
-  ...house(2, 14, true, 'siding_butter'),
+  // ---- the two houses ------------------------------------------------------
+  ...house(-2, -14, false, 'siding_mint', 'wood_pale'),
+  ...house(2, 14, true, 'siding_butter', 'wood_prop_dark'),
 
-  // ---- the street ---------------------------------------------------------
-  ...vehicles(),
-  // A mailbox and a hydrant: the small silhouettes that tell you which end of
-  // the street you are looking down.
-  [-13, -6.6, 0.3, 0.3, 1.1, 0, 'metal_dark'],
-  [14, 6.6, 0.36, 0.36, 0.9, 0, 'metal_rust_prop'],
+  // ---- the street ----------------------------------------------------------
+  ...bus(0, 0, 0.16),
+  ...car(16, -2.2, -0.3, 'metal_blue', 5.2, 2.2, false),
+  ...car(-17, 2.4, 0.22, 'metal_green', 4.6, 2.0, true),
+  ...car(-9, -9.6, 1.55, 'plaster_pink', 4.4, 1.9, true),   // parked on the mint drive
+  ...lamp(-13, -7.4, false),
+  ...lamp(13, 7.4, true),
+  ...pole(-26, -7.6),
+  ...pole(26, 7.6),
+  // mailbox, hydrant, bins: the small silhouettes that tell you which end of the
+  // street you are looking down.
+  [-13, -6.9, 0.3, 0.3, 1.1, 0, 'metal_dark'],
+  [-13, -6.9, 0.5, 0.34, 0.34, 0, 'metal_blue', 1.1],
+  [14, 6.9, 0.36, 0.36, 0.9, 0, 'metal_rust_prop'],
+  [7.4, -7.2, 0.7, 0.7, 1.1, 0.2, 'metal_green'],
+  [8.4, -7.2, 0.7, 0.7, 1.1, -0.1, 'metal_blue'],
+  [-7.4, 7.2, 0.7, 0.7, 1.1, 0.3, 'metal_green'],
 
   // ---- back yards: the flank routes ---------------------------------------
-  // Fences at 1.9 m, so a yard cannot be shot into from the street, with one
-  // gap at each end that is the actual flank.
   ...wall('x', -24, -26, 22, 1.9, [-20, 18], 0.25, 'wood_prop_dark'),
   ...wall('x', 24, -22, 26, 1.9, [-18, 20], 0.25, 'wood_prop_dark'),
   ...wall('z', -26, -24, -8, 1.9, [-16], 0.25, 'wood_prop_dark'),
   ...wall('z', 26, 8, 24, 1.9, [16], 0.25, 'wood_prop_dark'),
-  // Yard cover: shed, low wall, hedge. One of each per side, mirrored.
+  // Yard cover and yard life: shed, low wall, hedge, and the clutter that makes
+  // a back garden read as somebody's rather than as a cover layout.
   [-16, -20, 3.2, 2.8, 2.4, 0.2, 'corrugated'],
   [8, -19, 4.0, 1.0, 1.1, 0, 'brick'],
   [16, -21, 3.6, 1.2, 1.3, 0, 'foliage'],
+  [-6, -19.5, 2.0, 2.0, 0.35, 0.3, 'window_glass'],        // paddling pool
+  [-10, -21, 1.6, 0.7, 0.45, 0.1, 'wood_prop'],            // bench
+  [12, -17.5, 0.9, 0.9, 0.9, 0.5, 'rubber'],               // tyre
   [16, 20, 3.2, 2.8, 2.4, -0.2, 'corrugated'],
   [-8, 19, 4.0, 1.0, 1.1, 0, 'brick'],
   [-16, 21, 3.6, 1.2, 1.3, 0, 'foliage'],
+  [6, 19.5, 1.6, 0.7, 0.45, -0.1, 'wood_prop'],
+  [10, 21, 1.2, 1.2, 0.6, 0.4, 'wood_prop_dark'],          // crate
+  [-12, 17.5, 0.9, 0.9, 0.9, -0.5, 'rubber'],
+  // Basketball hoop over the butter drive, because every one of these streets
+  // has one and it is a landmark you can call.
+  [-13.5, 9.2, 0.2, 0.2, 3.0, 0, 'metal_dark'],
+  [-13.5, 9.6, 1.4, 0.12, 0.95, 0, 'plaster_white', 2.4],
+  [-13.5, 10.0, 0.5, 0.5, 0.06, 0, 'metal_rust_prop', 2.7],
 
   // ---- the ends of the street ---------------------------------------------
-  // Blocked, but with cover beside the blockage: the street has to connect to
-  // the yards or the map is three parallel corridors.
   [-28, 0, 1.2, 9, 2.6, 0, 'concrete_dark'],
   [28, 0, 1.2, 9, 2.6, 0, 'concrete_dark'],
   [-25, -4.5, 2.6, 1.2, 1.1, 0, 'concrete_prop'],
@@ -1042,6 +1225,16 @@ const CULDESAC_SPAWNS = [
   [22, 18, Math.PI + 0.6, 'butter yard east'],
 ];
 
+/**
+ * Two bare bulbs per house, under the first floor slab. Without them the ground
+ * floors are the black rooms described at the top of this map - the slab is a
+ * roof, and this build has no bounced skylight to get under it.
+ */
+const CULDESAC_LIGHTS = [
+  [-6.5, 2.6, -15.5], [1.5, 2.6, -11.5],
+  [6.5, 2.6, 15.5], [-1.5, 2.6, 11.5],
+];
+
 export const ARENAS = {
   /**
    * 17.2 - a low afternoon sun down the length of the street, so the road is
@@ -1052,6 +1245,7 @@ export const ARENAS = {
   culdesac: {
     walls: CULDESAC,
     spawns: CULDESAC_SPAWNS,
+    lights: CULDESAC_LIGHTS,
     floor: [66, 60],
     /**
      * Dirt underneath, with the lawns laid on top as slabs (see CULDESAC).
@@ -1207,6 +1401,14 @@ export function buildArena(A, id) {
    * SITS ON, not its centre — that is how a floor plan is written, and it is the
    * only way stacking onto a plinth stays legible.
    */
+  /**
+   * Practicals. `world._addLights` reads `A.interiorLights` and hangs a bulb at
+   * each one, budgeted and distance-culled like the street map's, with the
+   * ballast holding the shader permutation constant. An arena with a roof over
+   * any part of it needs these or that part is a black room.
+   */
+  for (const [lx, ly, lz] of spec.lights ?? []) A.interiorLights.push({ x: lx, y: ly, z: lz });
+
   const unit = flat(new THREE.BoxGeometry(1, 1, 1));
   for (const [x, z, w, d, h, ry, mat, y] of spec.walls) {
     const m = mat ?? 'plaster_white';
