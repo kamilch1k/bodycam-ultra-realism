@@ -389,6 +389,18 @@ export const PALETTE = {
   glass: { name: 'glass', surface: 'glass', opts: { scale: 2.0 } },
   foliage: { name: 'foliage', surface: 'foliage', opts: { vertexMasks: true } },
   /**
+   * Tree canopy. The foliage generator is an ALPHA-CUT leaf card, which is
+   * right on a hedge-thin box and a disaster on anything with volume — the cut
+   * punches straight through the far side and you get a chewed black-and-white
+   * mess with sky behind it. Solid, tinted and finer-grained: from the street a
+   * canopy is a shape with leaf texture on it, not a cloud of individual leaves.
+   */
+  canopy: {
+    name: 'foliage',
+    surface: 'foliage',
+    opts: { vertexMasks: true, alphaMask: false, tint: 0x6f8a4a, scale: 0.42 },
+  },
+  /**
    * Mown grass. Built on DIRT, not on the foliage generator: `foliage` draws
    * individual leaf cards, which is right for a hedge and reads as a scatter of
    * dinner plates when you lay it flat. Dirt already has the fine relief a lawn

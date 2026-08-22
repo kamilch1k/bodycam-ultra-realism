@@ -1038,7 +1038,16 @@ function house(cx, cz, flip, siding, trim) {
   // silhouettes that stop a flat facade reading as a flat facade.
   out.push([x1 + 0.5, cz - 4.5 * s, 1.0, 1.0, 0.9, 0, 'metal_dark', 0.25]);
   out.push([x1 + 0.35, cz + 4 * s, 0.7, 0.7, 0.7, 0.4, 'plaster_white', Y_UPPER + 1.6]);
-  return out;
+
+  /* ---- roof -------------------------------------------------------------- */
+  // A gable over the whole footprint. This is what the map was missing: with a
+  // flat top the houses were boxes, and boxes are what every other arena here
+  // already is.
+  const g = gable(cx, cz, W, D, Y_UPPER + H_UPPER, 2.2, 'roof_screed');
+  out.push(...g.walls);
+  // A chimney, off-centre, because a roofline with nothing on it is a plane.
+  out.push([cx + 4.5 * s, cz - 2 * s, 1.1, 1.1, 1.6, 0, 'brick', Y_UPPER + H_UPPER + 1.4]);
+  return { walls: out, roofs: g.roofs };
 }
 
 /**
@@ -1109,6 +1118,61 @@ function bus(cx, cz, ry) {
   return out;
 }
 
+/**
+ * A gable roof: two slabs leaning on a ridge, plus the triangular gable ends
+ * stepped out of three boxes each. Overhangs the walls by 0.4 m, because eaves
+ * are most of what makes a roof read as a roof from the street.
+ */
+function gable(cx, cz, w, d, eaveY, rise, mat) {
+  const half = d / 2 + 0.4;
+  const slope = Math.hypot(half, rise);
+  const ang = Math.atan2(rise, half);
+  return {
+    roofs: [
+      { x: cx, y: eaveY + rise / 2, z: cz - half / 2, w: w + 0.8, h: 0.22, d: slope, rx: -ang, mat },
+      { x: cx, y: eaveY + rise / 2, z: cz + half / 2, w: w + 0.8, h: 0.22, d: slope, rx: ang, mat },
+    ],
+    // Gable ends, stepped. Three boxes is enough: the eaves shade them and the
+    // step is under 0.4 m, which nobody reads as a staircase from the ground.
+    walls: [0, 1, 2].flatMap((i) => {
+      const t = (i + 0.5) / 3;
+      const y = eaveY + rise * (i / 3);
+      const h = rise / 3;
+      const wid = (d / 2) * (1 - i / 3) * 2;
+      return [
+        [cx - w / 2 + 0.12, cz, 0.24, wid, h, 0, mat, y],
+        [cx + w / 2 - 0.12, cz, 0.24, wid, h, 0, mat, y],
+      ];
+    }),
+  };
+}
+
+/**
+ * A neighbouring house, seen over the fence and never entered: four walls, a
+ * roof, and nothing inside. These are what the map is bounded BY now — a
+ * perimeter of other people's houses rather than a concrete wall with a
+ * gradient on it. Solid, so they are also the collision that keeps you in.
+ */
+function neighbour(cx, cz, w, d, siding, roofMat, ry = 0) {
+  const H = 5.6;
+  const out = { walls: [], roofs: [] };
+  out.walls.push([cx, cz, w, d, H, ry, siding]);
+  const g = gable(cx, cz, w, d, H, 1.8, roofMat);
+  out.roofs.push(...g.roofs);
+  out.walls.push(...g.walls);
+  return out;
+}
+
+/** Trunk and two canopy blocks. Cheap, and the only vertical soft shape on the
+ *  map — a street of nothing but boxes reads as a warehouse district. */
+function tree(x, z, h = 5.5, spread = 3.6) {
+  return [
+    [x, z, 0.42, 0.42, h * 0.55, 0, 'wood_prop_dark'],
+    [x, z, spread, spread, h * 0.34, 0.4, 'canopy', h * 0.45],
+    [x, z, spread * 0.72, spread * 0.72, h * 0.26, -0.3, 'canopy', h * 0.72],
+  ];
+}
+
 /** Street lamp: pole, arm, lens. The lens is the emissive bit the world's
  *  practical pass lights up after dusk. */
 function lamp(x, z, flip) {
@@ -1130,6 +1194,38 @@ function pole(x, z) {
     [x + 9, z, 18, 0.06, 0.06, 0, 'metal_dark', 7.3],
   ];
 }
+
+const HOUSE_MINT = house(-2, -14, false, 'siding_mint', 'wood_pale');
+const HOUSE_BUTTER = house(2, 14, true, 'siding_butter', 'wood_prop_dark');
+
+/**
+ * THE NEIGHBOURHOOD - what this map is bounded BY.
+ *
+ * The perimeter used to be four 6 m concrete walls, which is the single ugliest
+ * thing a level can do: it tells the player the world is a box and it puts a
+ * blank grey plane behind every silhouette they are trying to read. Nuketown
+ * does not have walls, it has MORE STREET - other houses, other fences, a
+ * blocked road - and you never once wonder where the edge is.
+ *
+ * So the edge is now other people's houses. They are solid, so they are the
+ * collision too; they are 5.6 m to the eaves with roofs on, so they close the
+ * skyline; and they are set back behind fences and hedges so the eye reads
+ * depth rather than a barrier.
+ */
+const NEIGHBOURS = [
+  neighbour(-30, -25, 13, 10, 'plaster_pink', 'roof_screed'),
+  neighbour(-13, -30, 12, 10, 'plaster_cream', 'roof_screed'),
+  neighbour(6, -31, 14, 10, 'plaster_blue', 'roof_screed'),
+  neighbour(26, -28, 12, 11, 'siding_mint', 'roof_screed'),
+  neighbour(30, -8, 10, 13, 'plaster_sand', 'roof_screed'),
+  neighbour(31, 12, 11, 12, 'plaster_cream', 'roof_screed'),
+  neighbour(26, 29, 13, 10, 'plaster_pink', 'roof_screed'),
+  neighbour(4, 32, 14, 10, 'siding_butter', 'roof_screed'),
+  neighbour(-16, 31, 12, 10, 'plaster_blue', 'roof_screed'),
+  neighbour(-31, 26, 12, 11, 'plaster_sand', 'roof_screed'),
+  neighbour(-33, 4, 10, 14, 'siding_mint', 'roof_screed'),
+  neighbour(-32, -12, 10, 12, 'plaster_cream', 'roof_screed'),
+];
 
 const CULDESAC = [
   // ---- lawns, then the road over them -------------------------------------
@@ -1156,8 +1252,8 @@ const CULDESAC = [
   [24, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
 
   // ---- the two houses ------------------------------------------------------
-  ...house(-2, -14, false, 'siding_mint', 'wood_pale'),
-  ...house(2, 14, true, 'siding_butter', 'wood_prop_dark'),
+  ...HOUSE_MINT.walls,
+  ...HOUSE_BUTTER.walls,
 
   // ---- the street ----------------------------------------------------------
   ...bus(0, 0, 0.16),
@@ -1203,16 +1299,78 @@ const CULDESAC = [
   [-13.5, 10.0, 0.5, 0.5, 0.06, 0, 'metal_rust_prop', 2.7],
 
   // ---- the ends of the street ---------------------------------------------
-  [-28, 0, 1.2, 9, 2.6, 0, 'concrete_dark'],
-  [28, 0, 1.2, 9, 2.6, 0, 'concrete_dark'],
-  [-25, -4.5, 2.6, 1.2, 1.1, 0, 'concrete_prop'],
-  [25, 4.5, 2.6, 1.2, 1.1, 0, 'concrete_prop'],
+  // A road blocked the way a road is actually blocked: barriers across the
+  // lanes, not a wall. You can see past them, which is the point.
+  [-27.5, -3, 0.5, 4.4, 1.15, 0.12, 'plaster_white'],
+  [-27.5, 3, 0.5, 4.4, 1.15, -0.12, 'plaster_white'],
+  [-27.5, -3, 0.6, 4.6, 0.2, 0.12, 'neon_orange', 1.15],
+  [-27.5, 3, 0.6, 4.6, 0.2, -0.12, 'neon_orange', 1.15],
+  [27.5, -3, 0.5, 4.4, 1.15, -0.1, 'plaster_white'],
+  [27.5, 3, 0.5, 4.4, 1.15, 0.1, 'plaster_white'],
+  [27.5, -3, 0.6, 4.6, 0.2, -0.1, 'neon_orange', 1.15],
+  [27.5, 3, 0.6, 4.6, 0.2, 0.1, 'neon_orange', 1.15],
+  // The road carries on past them, into the neighbourhood, so the eye follows
+  // it out instead of stopping at the barrier.
+  [-38, 0, 20, 11, 0.06, 0, 'asphalt'],
+  [38, 0, 20, 11, 0.06, 0, 'asphalt'],
+  [-38, -6.2, 20, 2.4, 0.16, 0, 'concrete_prop'],
+  [-38, 6.2, 20, 2.4, 0.16, 0, 'concrete_prop'],
+  [38, -6.2, 20, 2.4, 0.16, 0, 'concrete_prop'],
+  [38, 6.2, 20, 2.4, 0.16, 0, 'concrete_prop'],
+  [-34, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [-42, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [34, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  [42, 0, 2.6, 0.16, 0.08, 0, 'plaster_white'],
+  // A parked car at each blockade: what the neighbours left in the road.
+  ...car(-33, -3.2, 0.05, 'plaster_cream', 4.6, 2.0, true),
+  ...car(34, 3.0, 3.2, 'metal_rust_prop', 4.8, 2.1, false),
 
-  // ---- perimeter -----------------------------------------------------------
-  ...wall('z', -31, -27, 27, 6, [], 0.6, 'concrete_dark'),
-  ...wall('z', 31, -27, 27, 6, [], 0.6, 'concrete_dark'),
-  ...wall('x', -27, -31, 31, 6, [], 0.6, 'concrete_dark'),
-  ...wall('x', 27, -31, 31, 6, [], 0.6, 'concrete_dark'),
+  // ---- the boundary --------------------------------------------------------
+  /**
+   * A CLOSED TIMBER FENCE, 2.2 m — over head height, so it cannot be shot
+   * across or vaulted (auto-vault tops out at 0.7 m), and low enough that the
+   * neighbourhood behind it is the thing you see rather than the fence itself.
+   *
+   * It has to exist: with the concrete perimeter gone the nav mesh found 13800
+   * walkable cells instead of 6164 and both teams could simply wander out
+   * between the neighbours' houses. A boundary you can see over is not the same
+   * thing as no boundary.
+   */
+  ...wall('x', -28.5, -29, 29, 2.2, [], 0.22, 'wood_prop_dark'),
+  ...wall('x', 28.5, -29, 29, 2.2, [], 0.22, 'wood_prop_dark'),
+  // The two ends where it crosses the ROAD are a steel hoarding instead, with
+  // the barriers in front of them: a timber garden fence built across a
+  // carriageway is the kind of detail that tells a player the level is a box.
+  ...wall('z', -29, -6.4, 6.4, 2.6, [], 0.3, 'corrugated'),
+  ...wall('z', 29, -6.4, 6.4, 2.6, [], 0.3, 'corrugated'),
+  ...wall('z', -29, -28.5, -6.4, 2.2, [], 0.22, 'wood_prop_dark'),
+  ...wall('z', -29, 6.4, 28.5, 2.2, [], 0.22, 'wood_prop_dark'),
+  ...wall('z', 29, -28.5, -6.4, 2.2, [], 0.22, 'wood_prop_dark'),
+  ...wall('z', 29, 6.4, 28.5, 2.2, [], 0.22, 'wood_prop_dark'),
+
+  // ---- the neighbourhood ---------------------------------------------------
+  // See NEIGHBOURS. Beyond the fence, and never entered.
+  ...NEIGHBOURS.flatMap((n) => n.walls),
+  // Lawns under them, so the ring is not a row of houses standing on dirt.
+  [0, -32, 84, 18, 0.05, 0, 'lawn'],
+  [0, 32, 84, 18, 0.05, 0, 'lawn'],
+  [-34, 0, 18, 84, 0.05, 0, 'lawn'],
+  [34, 0, 18, 84, 0.05, 0, 'lawn'],
+  // Trees along the street and in the neighbours' gardens. The only soft
+  // silhouette on the map, and the thing that makes the skyline suburban.
+  ...tree(-21, -8.6, 6.2, 4.2),
+  ...tree(21, 8.6, 5.6, 3.8),
+  ...tree(-24, 12, 5.0, 3.4),
+  ...tree(24, -12, 5.4, 3.6),
+  ...tree(-2, -27, 6.6, 4.6),
+  ...tree(14, 27, 6.0, 4.0),
+  ...tree(-30, 16, 5.8, 4.0),
+  ...tree(30, -18, 6.4, 4.4),
+  // Hedges along the front of the neighbours: depth between them and the fence.
+  [-13, -24.5, 11, 1.1, 1.2, 0, 'foliage'],
+  [6, -25.5, 13, 1.1, 1.2, 0, 'foliage'],
+  [4, 26.5, 13, 1.1, 1.2, 0, 'foliage'],
+  [-16, 25.5, 11, 1.1, 1.2, 0, 'foliage'],
 ];
 
 /** Behind each house, facing its own back door - you come through your house. */
@@ -1230,9 +1388,19 @@ const CULDESAC_SPAWNS = [
  * floors are the black rooms described at the top of this map - the slab is a
  * roof, and this build has no bounced skylight to get under it.
  */
+const CULDESAC_ROOFS = [
+  ...HOUSE_MINT.roofs,
+  ...HOUSE_BUTTER.roofs,
+  ...NEIGHBOURS.flatMap((n) => n.roofs),
+];
+
 const CULDESAC_LIGHTS = [
+  // ground floor
   [-6.5, 2.6, -15.5], [1.5, 2.6, -11.5],
   [6.5, 2.6, 15.5], [-1.5, 2.6, 11.5],
+  // and upstairs, which used to be open to the sky and is now under a gable
+  [-6.0, 5.6, -16.0], [2.0, 5.6, -12.0],
+  [6.0, 5.6, 16.0], [-2.0, 5.6, 12.0],
 ];
 
 export const ARENAS = {
@@ -1244,9 +1412,10 @@ export const ARENAS = {
    */
   culdesac: {
     walls: CULDESAC,
+    roofs: CULDESAC_ROOFS,
     spawns: CULDESAC_SPAWNS,
     lights: CULDESAC_LIGHTS,
-    floor: [66, 60],
+    floor: [96, 92],
     /**
      * Dirt underneath, with the lawns laid on top as slabs (see CULDESAC).
      * The grass generator makes a convincing hedge as a BOX and a blown-out
@@ -1410,6 +1579,30 @@ export function buildArena(A, id) {
   for (const [lx, ly, lz] of spec.lights ?? []) A.interiorLights.push({ x: lx, y: ly, z: lz });
 
   const unit = flat(new THREE.BoxGeometry(1, 1, 1));
+
+  /**
+   * PITCHED ROOFS.
+   *
+   * The box rows carry a Y rotation and nothing else, which is why every arena
+   * here is flat-topped — and a flat-topped house does not read as a house. A
+   * roof row is a full transform instead: `add()` takes a matrix, so the slab
+   * can lean, and `collideGeo()` takes the same one, so what you walk on and
+   * what you see are the same surface rather than an approximation of it.
+   */
+  const _rm = new THREE.Matrix4();
+  const _rq = new THREE.Quaternion();
+  const _re = new THREE.Euler();
+  for (const r of spec.roofs ?? []) {
+    _re.set(r.rx ?? 0, r.ry ?? 0, r.rz ?? 0, 'XYZ');
+    _rq.setFromEuler(_re);
+    _rm.compose(
+      new THREE.Vector3(r.x, r.y, r.z),
+      _rq,
+      new THREE.Vector3(r.w, r.h, r.d)
+    );
+    A.add(r.mat, unit, _rm);
+    A.collideGeo(r.mat, unit, _rm);
+  }
   for (const [x, z, w, d, h, ry, mat, y] of spec.walls) {
     const m = mat ?? 'plaster_white';
     const cy = (y ?? 0) + h / 2;
