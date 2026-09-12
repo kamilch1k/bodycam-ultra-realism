@@ -993,17 +993,29 @@ function house(cx, cz, flip, siding, trim) {
   /* ---- the first floor slab -------------------------------------------- */
   // Whole footprint except the stairwell, which is the void the stairs climb
   // through. Two slabs with a gap rather than one with a hole punched in it.
-  const stairX = cx + 4.6 * s;
+  /**
+   * The two slabs leave a 3 m gap between them (cx+1.2s .. cx+4.2s) and the
+   * stair goes UP THAT GAP. The first version put the stair at cx+4.6s, which
+   * is under the second slab — eight solid blocks climbing into the underside
+   * of the first floor, filling half the hall with what looked like a brick
+   * wedge. The stairwell and the stair have to be derived from the same number.
+   */
+  const stairX = cx + 3.7 * s;
   out.push([cx - 3.9 * s, cz, 10.2, D, H_SLAB, 0, 'wood_pale', H_GROUND]);
   out.push([cx + 6.6 * s, cz, 4.8, D, H_SLAB, 0, 'wood_pale', H_GROUND]);
-  out.push([stairX, cz - 4.4 * s, 3.2, 3.2, H_SLAB, 0, 'wood_pale', H_GROUND]);
+  // Close the back third of the void: the stair only needs 3.4 m of run.
+  out.push([cx + 2.7 * s, cz - 4.4 * s, 3.0, 3.2, H_SLAB, 0, 'wood_pale', H_GROUND]);
 
   /* ---- stairs ----------------------------------------------------------- */
   // Eight treads, 0.375 m each. Rising along +z*s so you come up facing the
   // landing rather than a wall.
+  // 1.0 m wide — a domestic staircase, not a civic one. Solid treads (each box
+  // runs floor to nosing) because a house stair is closed underneath anyway.
   for (let i = 0; i < 8; i++) {
-    out.push([stairX, cz - 2.6 * s + i * 0.42 * s, 3.0, 0.42, 0.375 * (i + 1), 0, 'wood_prop']);
+    out.push([stairX, cz - 2.4 * s + i * 0.42 * s, 1.0, 0.42, 0.375 * (i + 1), 0, 'wood_pale']);
   }
+  // The rail down the open side, so the drop reads before you walk into it.
+  out.push([stairX - 0.6 * s, cz - 0.6 * s, 0.1, 3.6, 0.95, 0, 'wood_prop_dark', 1.6]);
 
   /* ---- upper floor ------------------------------------------------------ */
   // Street-facing wall: two bedroom windows looking down onto the road. This is
